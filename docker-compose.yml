@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: docker-faas/gateway:latest
+    container_name: docker-faas-gateway
+    ports:
+      - "8080:8080"   # Gateway API
+      - "9090:9090"   # Metrics
+    environment:
+      - GATEWAY_PORT=8080
+      - METRICS_PORT=9090
+      - FUNCTIONS_NETWORK=docker-faas-net
+      - GATEWAY_CONTAINER_NAME=docker-faas-gateway
+      - AUTH_ENABLED=true
+      - AUTH_USER=admin
+      - AUTH_PASSWORD=admin
+      - LOG_LEVEL=info
+      - STATE_DB_PATH=/data/docker-faas.db
+      - READ_TIMEOUT=60s
+      - WRITE_TIMEOUT=60s
+      - EXEC_TIMEOUT=60s
+      - DEFAULT_REPLICAS=1
+      - MAX_REPLICAS=10
+      # Debug settings - bind to localhost only for security
+      - DEBUG_BIND_ADDRESS=127.0.0.1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - faas-data:/data
+      - faas-secrets:/var/openfaas/secrets
+    networks:
+      - docker-faas-net
+    restart: unless-stopped
+
+networks:
+  docker-faas-net:
+    name: docker-faas-net
+    driver: bridge
+
+volumes:
+  faas-data:
+    name: docker-faas-data
+  faas-secrets:
+    name: docker-faas-secrets

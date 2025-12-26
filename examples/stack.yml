@@ -1,0 +1,29 @@
+version: 1.0
+provider:
+  name: openfaas
+  gateway: http://localhost:8080
+
+functions:
+  hello-world:
+    lang: dockerfile
+    handler: ./hello-world
+    image: docker-faas/hello-world:latest
+    labels:
+      com.docker-faas.example: "true"
+    environment:
+      write_debug: "true"
+
+  echo:
+    image: ghcr.io/openfaas/alpine:latest
+    labels:
+      com.docker-faas.example: "true"
+    environment:
+      fprocess: "cat"
+
+  env-test:
+    image: ghcr.io/openfaas/alpine:latest
+    labels:
+      com.docker-faas.example: "true"
+    environment:
+      fprocess: "env"
+      CUSTOM_VAR: "test-value"

@@ -1,0 +1,29 @@
+groups:
+  - name: docker-faas
+    rules:
+      - alert: DockerFaasGatewayDown
+        expr: up{job="docker-faas"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Docker FaaS gateway is down"
+          description: "Prometheus has not scraped the gateway for 2 minutes."
+
+      - alert: DockerFaasFunctionErrors
+        expr: sum by (function_name) (rate(function_errors_total[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Function error rate detected"
+          description: "Function {{ $labels.function_name }} is returning errors."
+
+      - alert: DockerFaasHighLatency
+        expr: histogram_quantile(0.95, sum(rate(function_duration_seconds_bucket[5m])) by (le, function_name)) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High function latency"
+          description: "P95 latency for {{ $labels.function_name }} > 2s for 10 minutes."

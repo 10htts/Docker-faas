@@ -1,0 +1,304 @@
+# API Documentation
+
+Complete API reference for Docker FaaS Gateway.
+
+## Authentication
+
+All endpoints except `/healthz` require Basic Authentication when `AUTH_ENABLED=true`.
+
+```bash
+Authorization: Basic <base64(username:password)>
+```
+
+Default credentials: `admin:admin`
+
+## Endpoints
+
+### GET /system/info
+
+Get system information.
+
+**Response:**
+```json
+{
+  "provider": {
+    "name": "docker-faas",
+    "version": "1.0.0",
+    "orchestration": "docker"
+  },
+  "version": {
+    "release": "1.0.0",
+    "sha": "dev"
+  },
+  "arch": "x86_64"
+}
+```
+
+### GET /system/functions
+
+List all deployed functions.
+
+**Response:**
+```json
+[
+  {
+    "name": "hello-world",
+    "image": "docker-faas/hello-world:latest",
+    "replicas": 1,
+    "availableReplicas": 1,
+    "invocationCount": 0,
+    "envProcess": "python3 handler.py",
+    "labels": {
+      "com.docker-faas.example": "true"
+    },
+    "annotations": {},
+    "createdAt": "2024-01-15T10:30:00Z"
+  }
+]
+```
+
+### POST /system/functions
+
+Deploy a new function.
+
+**Request:**
+```json
+{
+  "service": "my-function",
+  "image": "my-org/my-function:latest",
+  "network": "docker-faas-net-my-function",
+  "envProcess": "node index.js",
+  "envVars": {
+    "NODE_ENV": "production",
+    "DEBUG": "false"
+  },
+  "labels": {
+    "tier": "backend"
+  },
+  "secrets": ["api-key", "db-password"],
+  "limits": {
+    "memory": "512m",
+    "cpu": "1"
+  },
+  "requests": {
+    "memory": "256m",
+    "cpu": "0.5"
+  },
+  "readOnlyRootFilesystem": true
+}
+```
+
+If `network` is omitted, the gateway creates a per-function network using `<FUNCTIONS_NETWORK>-<service>`.
+
+**Response:** `202 Accepted`
+
+### PUT /system/functions
+
+Update an existing function.
+
+**Request:** Same as POST
+
+**Response:** `202 Accepted`
+
+### DELETE /system/functions
+
+Delete a function.
+
+**Query Parameters:**
+- `functionName` (required) - Name of the function to delete
+
+**Example:**
+```bash
+DELETE /system/functions?functionName=my-function
+```
+
+**Response:** `202 Accepted`
+
+### POST /system/scale-function/{name}
+
+Scale a function to a specific replica count.
+
+**Request:**
+```json
+{
+  "serviceName": "my-function",
+  "replicas": 5
+}
+```
+
+**Response:** `202 Accepted`
+
+### GET /system/logs
+
+Get logs from a function.
+
+**Query Parameters:**
+- `name` (required) - Function name
+- `tail` (optional) - Number of lines to return (default: 100)
+
+**Example:**
+```bash
+GET /system/logs?name=my-function&tail=50
+```
+
+**Response:** Plain text logs
+
+### POST /function/{name}
+
+Invoke a function.
+
+**Request Body:** Function input (any content type)
+
+**Response:** Function output
+
+**Headers:**
+- `Content-Type` - Passed to function
+- `X-Forwarded-For` - Original client IP
+- `X-Forwarded-Host` - Original host
+- `X-Forwarded-Proto` - Original protocol
+
+**Example:**
+```bash
+curl -X POST http://localhost:8080/function/my-function \
+  -H "Content-Type: application/json" \
+  -d '{"key": "value"}' \
+  -u admin:admin
+```
+
+### GET /healthz
+
+Health check endpoint (no authentication required).
+
+**Response:** `200 OK` with body "OK"
+
+### GET /metrics
+
+Prometheus metrics endpoint (port 9090, no authentication).
+
+**Response:** Prometheus format metrics
+
+## Error Responses
+
+### 400 Bad Request
+```json
+{
+  "error": "Invalid request body"
+}
+```
+
+### 401 Unauthorized
+```
+Unauthorized
+```
+
+### 404 Not Found
+```json
+{
+  "error": "Function not found"
+}
+```
+
+### 409 Conflict
+```json
+{
+  "error": "Function already exists, use PUT to update"
+}
+```
+
+### 500 Internal Server Error
+```json
+{
+  "error": "Failed to deploy function: <details>"
+}
+```
+
+## Rate Limiting
+
+Currently no rate limiting is implemented. Consider using a reverse proxy like Nginx or Traefik for rate limiting in production.
+
+## Timeouts
+
+- Read Timeout: 60s (configurable via `READ_TIMEOUT`)
+- Write Timeout: 60s (configurable via `WRITE_TIMEOUT`)
+- Execution Timeout: 60s (configurable via `EXEC_TIMEOUT`)
+
+## OpenFaaS Compatibility
+
+This API implements the core OpenFaaS Gateway API endpoints. The following differences exist:
+
+### Supported:
+- Function deployment (POST)
+- Function updates (PUT)
+- Function deletion (DELETE)
+- Function listing (GET)
+- Function scaling (POST)
+- Function invocation (POST/GET/etc.)
+- Function logs (GET)
+- System info (GET)
+- Health check (GET)
+
+### Not Yet Supported:
+- Async invocations
+- Function namespaces
+- Secret management API
+- Function build API
+
+## Examples
+
+### Deploy Function with Environment Variables
+
+```bash
+curl -X POST http://localhost:8080/system/functions \
+  -u admin:admin \
+  -H "Content-Type: application/json" \
+  -d '{
+    "service": "env-demo",
+    "image": "ghcr.io/openfaas/alpine:latest",
+    "envVars": {
+      "fprocess": "env",
+      "MY_VAR": "hello",
+      "ANOTHER_VAR": "world"
+    }
+  }'
+```
+
+### Deploy Function with Resource Limits
+
+```bash
+curl -X POST http://localhost:8080/system/functions \
+  -u admin:admin \
+  -H "Content-Type: application/json" \
+  -d '{
+    "service": "resource-demo",
+    "image": "my-function:latest",
+    "limits": {
+      "memory": "256m",
+      "cpu": "0.5"
+    }
+  }'
+```
+
+### Invoke Function with JSON
+
+```bash
+curl -X POST http://localhost:8080/function/my-function \
+  -u admin:admin \
+  -H "Content-Type: application/json" \
+  -d '{"name": "John", "age": 30}'
+```
+
+### Scale Function
+
+```bash
+curl -X POST http://localhost:8080/system/scale-function/my-function \
+  -u admin:admin \
+  -H "Content-Type: application/json" \
+  -d '{"serviceName": "my-function", "replicas": 3}'
+```
+
+### Get Function Logs
+
+```bash
+curl http://localhost:8080/system/logs?name=my-function&tail=20 \
+  -u admin:admin
+```
