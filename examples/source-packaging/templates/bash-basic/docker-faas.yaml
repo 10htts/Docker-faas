@@ -1,0 +1,3 @@
+name: bash-basic
+runtime: bash
+command: "bash handler.sh"

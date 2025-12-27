@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Docker FaaS - Control Panel</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="login-screen" class="screen active">
+        <div class="login-container">
+            <div class="logo">
+                <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                    <rect x="4" y="4" width="40" height="40" rx="8" stroke="currentColor" stroke-width="2"/>
+                    <path d="M14 24L20 18L26 24L34 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="34" cy="16" r="2" fill="currentColor"/>
+                </svg>
+                <h1>Docker FaaS</h1>
+            </div>
+            <div class="login-form">
+                <h2>Gateway Connection</h2>
+                <div class="form-group">
+                    <label for="gateway-url">Gateway URL</label>
+                    <input type="text" id="gateway-url" placeholder="http://localhost:8080">
+                </div>
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" autocomplete="current-password">
+                </div>
+                <div id="login-error" class="error-message"></div>
+                <button id="login-btn" class="btn btn-primary">Connect</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Application -->
+    <div id="app-screen" class="screen">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-left">
+                <div class="logo-small">
+                    <svg width="32" height="32" viewBox="0 0 48 48" fill="none">
+                        <rect x="4" y="4" width="40" height="40" rx="8" stroke="currentColor" stroke-width="2"/>
+                        <path d="M14 24L20 18L26 24L34 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle cx="34" cy="16" r="2" fill="currentColor"/>
+                    </svg>
+                </div>
+                <h1>Docker FaaS</h1>
+                <span class="gateway-url" id="header-gateway-url"></span>
+            </div>
+            <div class="header-right">
+                <button id="refresh-btn" class="btn btn-icon" title="Refresh">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"/>
+                    </svg>
+                </button>
+                <button id="logout-btn" class="btn btn-secondary">Disconnect</button>
+            </div>
+        </header>
+
+        <!-- Navigation -->
+        <nav class="app-nav">
+            <button class="nav-item active" data-view="overview">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                    <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+                </svg>
+                Overview
+            </button>
+            <button class="nav-item" data-view="functions">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M4 7h16M4 12h16M4 17h16"/>
+                </svg>
+                Functions
+            </button>
+            <button class="nav-item" data-view="secrets">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                Secrets
+            </button>
+            <button class="nav-item" data-view="logs">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+                </svg>
+                Logs
+            </button>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="app-main">
+            <!-- Overview View -->
+            <div id="overview-view" class="view active">
+                <div class="view-header">
+                    <h2>System Overview</h2>
+                    <div class="health-indicator" id="health-status">
+                        <span class="status-dot"></span>
+                        <span class="status-text">Checking...</span>
+                    </div>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Functions</div>
+                        <div class="stat-value" id="stat-functions">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Total Replicas</div>
+                        <div class="stat-value" id="stat-replicas">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Debug Enabled</div>
+                        <div class="stat-value" id="stat-debug">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Gateway Version</div>
+                        <div class="stat-value" id="stat-version">-</div>
+                    </div>
+                </div>
+
+                <div class="quick-actions">
+                    <h3>Quick Actions</h3>
+                    <button class="btn btn-primary" id="deploy-new-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                        </svg>
+                        Deploy New Function
+                    </button>
+                    <button class="btn btn-secondary" id="deploy-source-btn">Deploy from Source</button>
+                    <button class="btn btn-secondary" id="view-functions-btn">View All Functions</button>
+                    <button class="btn btn-secondary" id="manage-secrets-btn">Manage Secrets</button>
+                </div>
+
+                <div class="info-panel">
+                    <h3>Documentation</h3>
+                    <ul class="link-list">
+                        <li><a href="/ui/docs.html?file=GETTING_STARTED.md" target="_blank" rel="noopener">Getting Started Guide</a></li>
+                        <li><a href="/ui/docs.html?file=API.md" target="_blank" rel="noopener">API Reference</a></li>
+                        <li><a href="/ui/docs.html?file=WEB_UI.md" target="_blank" rel="noopener">Web UI Guide</a></li>
+                        <li><a href="/ui/docs.html?file=SOURCE_PACKAGING.md" target="_blank" rel="noopener">Source Packaging</a></li>
+                        <li><a href="/ui/docs.html?file=SOURCE_EXAMPLES.md" target="_blank" rel="noopener">Source Examples</a></li>
+                        <li><a href="/ui/docs.html?file=V2_ENHANCEMENTS.md" target="_blank" rel="noopener">v2.0 Enhancements</a></li>
+                        <li><a href="/ui/docs.html?file=DEPLOYMENT.md" target="_blank" rel="noopener">Production Deployment</a></li>
+                        <li><a href="/ui/docs.html?file=SECRETS.md" target="_blank" rel="noopener">Secrets Management</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Functions View -->
+            <div id="functions-view" class="view">
+                <div class="view-header">
+                    <h2>Functions</h2>
+                    <div class="view-actions">
+                        <input type="text" id="function-search" class="search-input" placeholder="Search functions...">
+                        <button class="btn btn-primary" id="create-function-btn">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                            </svg>
+                            Create Function
+                        </button>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table" id="functions-table">
+                        <thead>
+                            <tr>
+                                <th>Function</th>
+                                <th>Image</th>
+                                <th>Replicas</th>
+                                <th>Network</th>
+                                <th>Debug</th>
+                                <th>Updated</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="functions-tbody">
+                            <tr><td colspan="7" class="empty-state">No functions deployed</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Function Detail View -->
+            <div id="function-detail-view" class="view">
+                <div class="view-header">
+                    <div>
+                        <button class="btn btn-icon" id="back-to-functions">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
+                            </svg>
+                        </button>
+                        <h2 id="function-detail-name">Function Details</h2>
+                    </div>
+                    <div class="view-actions">
+                        <button class="btn btn-secondary" id="edit-function-btn">Edit</button>
+                        <button class="btn btn-danger" id="delete-function-btn">Delete</button>
+                    </div>
+                </div>
+
+                <div class="detail-grid">
+                    <div class="detail-section">
+                        <h3>Configuration</h3>
+                        <dl class="detail-list" id="function-config"></dl>
+                    </div>
+
+                    <div class="detail-section">
+                        <h3>Replicas</h3>
+                        <div class="scale-control">
+                            <label>Scale to:</label>
+                            <input type="number" id="scale-input" min="0" max="10" value="1">
+                            <button class="btn btn-primary" id="scale-btn">Apply</button>
+                        </div>
+                        <div id="replicas-list" class="replicas-grid"></div>
+                    </div>
+                </div>
+
+                <div class="detail-section invoke-section">
+                    <h3>Invoke Function</h3>
+                    <div class="invoke-form">
+                        <div class="form-row">
+                            <select id="invoke-method" class="form-select">
+                                <option value="POST">POST</option>
+                                <option value="GET">GET</option>
+                                <option value="PUT">PUT</option>
+                                <option value="DELETE">DELETE</option>
+                            </select>
+                            <input type="text" id="invoke-headers" placeholder="Headers (JSON)" class="form-control">
+                        </div>
+                        <textarea id="invoke-body" class="form-textarea" placeholder="Request body"></textarea>
+                        <button class="btn btn-primary" id="invoke-btn">Send Request</button>
+                    </div>
+                    <div id="invoke-response" class="response-panel"></div>
+                </div>
+            </div>
+
+            <!-- Create/Edit Function View -->
+            <div id="function-form-view" class="view">
+                <div class="view-header">
+                    <div>
+                        <button class="btn btn-icon" id="cancel-function-form">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
+                            </svg>
+                        </button>
+                        <h2 id="function-form-title">Create Function</h2>
+                    </div>
+                </div>
+
+                <form id="function-form" class="detail-form">
+                    <div class="form-section" id="env-section">
+                        <h3>Deployment Type</h3>
+                        <div class="form-group">
+                            <label for="form-deploy-mode">Mode</label>
+                            <select id="form-deploy-mode" class="form-select">
+                                <option value="image">Container Image</option>
+                                <option value="source">Source (Zip or Git)</option>
+                            </select>
+                        </div>
+                        <small>Source mode expects a `docker-faas.yaml` or Dockerfile. See Source Packaging docs.</small>
+                    </div>
+
+                    <div class="form-section" id="labels-section">
+                        <h3>Basic Configuration</h3>
+                        <div class="form-group">
+                            <label for="form-service">Function Name *</label>
+                            <input type="text" id="form-service" required>
+                        </div>
+                        <div class="form-group" id="image-config">
+                            <label for="form-image">Image *</label>
+                            <input type="text" id="form-image" placeholder="ghcr.io/openfaas/alpine:latest" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-network">Network</label>
+                            <input type="text" id="form-network" placeholder="docker-faas-net">
+                        </div>
+                        <div class="form-group checkbox-group">
+                            <label>
+                                <input type="checkbox" id="form-network-auto" checked>
+                                Auto network (derived from name)
+                            </label>
+                        </div>
+                        <small>When auto is enabled, the gateway derives the network from the function name.</small>
+                    </div>
+
+                    <div class="form-section" id="source-config" style="display:none;">
+                        <h3>Source Build</h3>
+                        <div class="form-group">
+                            <label for="form-source-type">Source Type</label>
+                            <select id="form-source-type" class="form-select">
+                                <option value="zip">Zip Upload</option>
+                                <option value="git">Git Repository</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="source-zip-group">
+                            <label for="form-source-zip">Zip File *</label>
+                            <input type="file" id="form-source-zip" class="form-control" accept=".zip">
+                        </div>
+                        <div class="form-group" id="source-git-group" style="display:none;">
+                            <label for="form-source-git-url">Git URL *</label>
+                            <input type="text" id="form-source-git-url" class="form-control" placeholder="https://github.com/org/repo.git">
+                        </div>
+                        <div class="form-row" id="source-git-meta" style="display:none;">
+                            <div class="form-group">
+                                <label for="form-source-git-ref">Git Ref</label>
+                                <input type="text" id="form-source-git-ref" class="form-control" placeholder="main">
+                            </div>
+                            <div class="form-group">
+                                <label for="form-source-path">Subdirectory</label>
+                                <input type="text" id="form-source-path" class="form-control" placeholder=".">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-source-runtime">Runtime</label>
+                            <select id="form-source-runtime" class="form-select">
+                                <option value="python">Python</option>
+                                <option value="go">Go</option>
+                                <option value="node">Node</option>
+                                <option value="bash">Bash</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-source-manifest">docker-faas.yaml (optional)</label>
+                            <textarea id="form-source-manifest" class="form-textarea" rows="10" placeholder="name: my-func&#10;runtime: python&#10;command: &quot;python handler.py&quot;"></textarea>
+                            <small>Use this to override runtime, env, labels, secrets, and limits.</small>
+                        </div>
+                        <div id="source-warning" class="warning-message" style="display:none;">
+                            Source builds require the build API and local builder on the gateway host.
+                        </div>
+                    </div>
+
+                    <div class="form-section" id="secrets-section">
+                        <h3>Environment Variables</h3>
+                        <textarea id="form-env" class="form-textarea" placeholder='{"KEY": "value"}'></textarea>
+                        <small>JSON format</small>
+                    </div>
+
+                    <div class="form-section" id="limits-section">
+                        <h3>Labels</h3>
+                        <textarea id="form-labels" class="form-textarea" placeholder='{"app": "myapp"}'></textarea>
+                        <small>JSON format</small>
+                    </div>
+
+                    <div class="form-section" id="advanced-section">
+                        <h3>Secrets</h3>
+                        <input type="text" id="form-secrets" placeholder="secret1,secret2">
+                        <small>Comma-separated secret names</small>
+                    </div>
+
+                    <div class="form-section">
+                        <h3>Resource Limits</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="form-memory">Memory</label>
+                                <input type="text" id="form-memory" placeholder="128m">
+                            </div>
+                            <div class="form-group">
+                                <label for="form-cpu">CPU</label>
+                                <input type="text" id="form-cpu" placeholder="0.5">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h3>Advanced Options</h3>
+                        <div class="form-group checkbox-group">
+                            <label>
+                                <input type="checkbox" id="form-readonly">
+                                Read-only Root Filesystem
+                            </label>
+                        </div>
+                        <div class="form-group checkbox-group">
+                            <label>
+                                <input type="checkbox" id="form-debug">
+                                Enable Debug Mode
+                            </label>
+                        </div>
+                        <div id="debug-warning" class="warning-message" style="display:none;">
+                            Warning: Debug mode exposes debugger ports. Check DEBUG_BIND_ADDRESS configuration.
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" id="submit-function-btn">Deploy Function</button>
+                        <button type="button" class="btn btn-secondary" id="cancel-form-btn">Cancel</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Secrets View -->
+            <div id="secrets-view" class="view">
+                <div class="view-header">
+                    <h2>Secrets Management</h2>
+                    <button class="btn btn-primary" id="create-secret-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                        </svg>
+                        Create Secret
+                    </button>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="secrets-tbody">
+                            <tr><td colspan="2" class="empty-state">No secrets</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Logs View -->
+            <div id="logs-view" class="view">
+                <div class="view-header">
+                    <h2>Function Logs</h2>
+                    <div class="view-actions">
+                        <select id="logs-function" class="form-select">
+                            <option value="">Select function...</option>
+                        </select>
+                        <select id="logs-tail" class="form-select">
+                            <option value="50">50 lines</option>
+                            <option value="100">100 lines</option>
+                            <option value="200">200 lines</option>
+                            <option value="500">500 lines</option>
+                        </select>
+                        <button class="btn btn-primary" id="fetch-logs-btn">Fetch Logs</button>
+                    </div>
+                </div>
+
+                <div class="logs-container">
+                    <pre id="logs-output" class="logs-output">Select a function and click "Fetch Logs"</pre>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal for Secret Creation/Update -->
+    <div id="secret-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="secret-modal-title">Create Secret</h3>
+                <button class="modal-close" id="close-secret-modal">x</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="secret-name">Secret Name *</label>
+                    <input type="text" id="secret-name" required>
+                </div>
+                <div class="form-group">
+                    <label for="secret-value">Secret Value *</label>
+                    <textarea id="secret-value" class="form-textarea" rows="4" required></textarea>
+                </div>
+                <div id="secret-error" class="error-message"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="save-secret-btn">Save Secret</button>
+                <button class="btn btn-secondary" id="cancel-secret-btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container"></div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

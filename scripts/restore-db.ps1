@@ -23,7 +23,7 @@ if (-not $NoStop) {
     docker stop $container | Out-Null
 }
 
-docker cp $BackupFile "$container:$dbPath" | Out-Null
+docker cp $BackupFile "${container}:$dbPath" | Out-Null
 
 if (-not $NoStop) {
     docker start $container | Out-Null

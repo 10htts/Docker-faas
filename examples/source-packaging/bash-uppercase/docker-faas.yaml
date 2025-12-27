@@ -1,0 +1,3 @@
+name: uppercase-bash
+runtime: bash
+command: "bash handler.sh"

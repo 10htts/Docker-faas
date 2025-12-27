@@ -31,6 +31,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - faas-data:/data
       - faas-secrets:/var/openfaas/secrets
+      - ./web/static:/app/web/static:ro
     networks:
       - docker-faas-net
     restart: unless-stopped

@@ -69,6 +69,7 @@ func main() {
 	r.HandleFunc("/system/functions", gw.HandleDeployFunction).Methods("POST")
 	r.HandleFunc("/system/functions", gw.HandleUpdateFunction).Methods("PUT")
 	r.HandleFunc("/system/functions", gw.HandleDeleteFunction).Methods("DELETE")
+	r.HandleFunc("/system/function/{name}/containers", gw.HandleFunctionContainers).Methods("GET")
 	r.HandleFunc("/system/scale-function/{name}", gw.HandleScaleFunction).Methods("POST")
 	r.HandleFunc("/system/logs", gw.HandleGetLogs).Methods("GET")
 
@@ -86,10 +87,27 @@ func main() {
 	r.HandleFunc("/healthz", gw.HandleHealthz).Methods("GET")
 
 	// Apply middleware
+	corsMiddleware := middleware.NewCORSMiddleware([]string{"*"}) // Allow all origins for development
 	loggingMiddleware := middleware.NewLoggingMiddleware(logger)
 	authMiddleware := middleware.NewBasicAuthMiddleware(cfg.AuthUser, cfg.AuthPassword, cfg.AuthEnabled, logger)
 
-	handler := loggingMiddleware.Middleware(authMiddleware.Middleware(r))
+	// Create separate router for UI (no auth)
+	uiRouter := mux.NewRouter()
+	uiRouter.PathPrefix("/ui/").Handler(http.StripPrefix("/ui/", http.FileServer(http.Dir("./web/static"))))
+	uiRouter.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/ui/", http.StatusFound)
+	})
+
+	// Combine routers: UI without auth, API with auth
+	mainRouter := mux.NewRouter()
+	mainRouter.PathPrefix("/ui/").Handler(corsMiddleware.Middleware(uiRouter))
+	mainRouter.PathPrefix("/docs/").Handler(corsMiddleware.Middleware(http.StripPrefix("/docs/", http.FileServer(http.Dir("./docs")))))
+	mainRouter.HandleFunc("/docs", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/docs/", http.StatusFound)
+	})
+	mainRouter.PathPrefix("/").Handler(corsMiddleware.Middleware(loggingMiddleware.Middleware(authMiddleware.Middleware(r))))
+
+	handler := mainRouter
 
 	// Setup HTTP server
 	srv := &http.Server{

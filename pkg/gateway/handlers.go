@@ -77,21 +77,69 @@ func (g *Gateway) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		var limits *types.FunctionLimits
+		if fn.Limits != "" {
+			var parsed types.FunctionLimits
+			if err := json.Unmarshal([]byte(fn.Limits), &parsed); err == nil {
+				limits = &parsed
+			} else {
+				g.logger.Warnf("Failed to parse limits for %s: %v", fn.Name, err)
+			}
+		}
+
+		var requests *types.FunctionResources
+		if fn.Requests != "" {
+			var parsed types.FunctionResources
+			if err := json.Unmarshal([]byte(fn.Requests), &parsed); err == nil {
+				requests = &parsed
+			} else {
+				g.logger.Warnf("Failed to parse requests for %s: %v", fn.Name, err)
+			}
+		}
+
 		status := types.FunctionStatus{
-			Name:              fn.Name,
-			Image:             fn.Image,
-			Replicas:          fn.Replicas,
-			AvailableReplicas: availableReplicas,
-			EnvProcess:        fn.EnvProcess,
-			Labels:            store.DecodeMap(fn.Labels),
-			Annotations:       make(map[string]string),
-			CreatedAt:         fn.CreatedAt,
+			Name:                   fn.Name,
+			Image:                  fn.Image,
+			Replicas:               fn.Replicas,
+			AvailableReplicas:      availableReplicas,
+			EnvProcess:             fn.EnvProcess,
+			EnvVars:                store.DecodeMap(fn.EnvVars),
+			Labels:                 store.DecodeMap(fn.Labels),
+			Annotations:            make(map[string]string),
+			Secrets:                store.DecodeSlice(fn.Secrets),
+			Network:                fn.Network,
+			Limits:                 limits,
+			Requests:               requests,
+			ReadOnlyRootFilesystem: fn.ReadOnly,
+			Debug:                  fn.Debug,
+			CreatedAt:              fn.CreatedAt,
+			UpdatedAt:              fn.UpdatedAt,
 		}
 
 		statuses = append(statuses, status)
 	}
 
 	g.writeJSON(w, http.StatusOK, statuses)
+}
+
+// HandleFunctionContainers handles GET /system/function/<name>/containers
+func (g *Gateway) HandleFunctionContainers(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	functionName := vars["name"]
+
+	if functionName == "" {
+		http.Error(w, "Function name is required", http.StatusBadRequest)
+		return
+	}
+
+	containers, err := g.provider.GetFunctionContainers(r.Context(), functionName)
+	if err != nil {
+		g.logger.Errorf("Failed to get containers for function %s: %v", functionName, err)
+		http.Error(w, "Failed to get containers", http.StatusInternalServerError)
+		return
+	}
+
+	g.writeJSON(w, http.StatusOK, containers)
 }
 
 // HandleDeployFunction handles POST /system/functions
@@ -289,6 +337,12 @@ func (g *Gateway) HandleScaleFunction(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&scaleReq); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
+	}
+
+	if scaleReq.ServiceName == "" {
+		if name := mux.Vars(r)["name"]; name != "" {
+			scaleReq.ServiceName = name
+		}
 	}
 
 	if scaleReq.ServiceName == "" {

@@ -9,16 +9,18 @@ A lightweight, Docker-native Function-as-a-Service (FaaS) platform compatible wi
 
 ## 🎉 What's New in v2.0
 
+- 🖥️ **Web UI** - Modern, production-focused control panel for managing functions
 - 🔐 **Secrets Management** - OpenFaaS-compatible file-based secrets
 - 🛡️ **Security Hardening** - Capability dropping, no-new-privileges, network isolation
 - 🐛 **Debug Mode** - Automatic port mapping for popular debuggers
 
-[See full release notes](RELEASE_NOTES_V2.md) | [v2 Enhancements Guide](docs/V2_ENHANCEMENTS.md)
+[See full release notes](RELEASE_NOTES_V2.md) | [v2 Enhancements Guide](docs/V2_ENHANCEMENTS.md) | [Web UI Guide](docs/WEB_UI.md)
 
 ## Features
 
 - ✅ **OpenFaaS Compatible** - Works with standard `faas-cli` and OpenFaaS function contracts
 - 🐳 **Docker Native** - Runs on Docker without Kubernetes
+- 🖥️ **Web UI** - Modern control panel for visual function management *(NEW in v2.0)*
 - 🔐 **Secrets Management** - Secure file-based secrets with validation *(NEW in v2.0)*
 - 🛡️ **Enterprise Security** - Capability dropping, privilege controls, network isolation *(NEW in v2.0)*
 - 🐛 **Debug Mode** - Built-in debugger support with auto port mapping *(NEW in v2.0)*
@@ -53,9 +55,33 @@ docker-compose up -d
 
 # Or check health manually
 curl http://localhost:8080/healthz
+
+# Access Web UI
+open http://localhost:8080/ui/
 ```
 
 > **💡 Quick Test:** Run `./verify-deployment.sh` for automated verification, or see [QUICK_TEST.md](QUICK_TEST.md) for testing options.
+
+### Access the Web UI
+
+Open your browser and navigate to:
+
+```
+http://localhost:8080/ui/
+```
+
+Default credentials:
+- **Username**: `admin`
+- **Password**: `admin`
+
+The Web UI provides:
+- Visual function management
+- Real-time system monitoring
+- Function invocation testing
+- Secrets management
+- Logs viewer
+
+See the [Web UI Guide](docs/WEB_UI.md) for full documentation.
 
 #### Using Pre-built Image
 

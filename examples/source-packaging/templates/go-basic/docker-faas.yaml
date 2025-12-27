@@ -1,0 +1,6 @@
+name: go-basic
+runtime: go
+command: "./app"
+build:
+  - "go mod download"
+  - "go build -o app ./"

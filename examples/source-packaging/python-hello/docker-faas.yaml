@@ -1,0 +1,7 @@
+name: hello-python
+runtime: python
+command: "python handler.py"
+env:
+  LOG_LEVEL: info
+labels:
+  tier: demo

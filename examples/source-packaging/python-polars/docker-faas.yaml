@@ -1,0 +1,7 @@
+name: polars-stats
+runtime: python
+command: "python handler.py"
+dependencies:
+  - requirements.txt
+env:
+  POLARS_FMT_STR_LEN: "80"

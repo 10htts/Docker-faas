@@ -1,0 +1,5 @@
+name: hello-node
+runtime: node
+command: "node index.js"
+dependencies:
+  - package.json

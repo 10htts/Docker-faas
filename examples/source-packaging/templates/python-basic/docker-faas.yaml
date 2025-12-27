@@ -1,0 +1,3 @@
+name: python-basic
+runtime: python
+command: "python handler.py"

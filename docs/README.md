@@ -12,6 +12,8 @@ Welcome to the Docker FaaS documentation!
 - [**API Reference**](API.md) - Complete API endpoint documentation
 - [**Architecture**](ARCHITECTURE.md) - Internal architecture and design decisions
 - [**Deployment Guide**](DEPLOYMENT.md) - Production deployment and configuration
+- [**Source Packaging**](SOURCE_PACKAGING.md) - Zip/GitHub packaging for source builds
+- [**Source Examples**](SOURCE_EXAMPLES.md) - Ready-to-zip examples and templates
 
 ### Contributing
 - [**Contributing Guide**](../CONTRIBUTING.md) - How to contribute to the project

@@ -1,0 +1,5 @@
+name: opencv-edge
+runtime: python
+command: "python handler.py"
+dependencies:
+  - requirements.txt

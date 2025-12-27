@@ -1,0 +1,9 @@
+name: hello-go
+runtime: go
+command: "./app"
+build:
+  - "go mod download"
+  - "go build -o app ./"
+limits:
+  memory: "256m"
+  cpu: "0.5"

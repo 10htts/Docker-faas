@@ -1,0 +1,5 @@
+name: node-basic
+runtime: node
+command: "node index.js"
+dependencies:
+  - package.json

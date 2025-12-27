@@ -26,6 +26,11 @@ WORKDIR /root/
 # Copy the binary from builder
 COPY --from=builder /app/docker-faas-gateway .
 
+# Copy web UI files
+COPY --from=builder /app/web /root/web
+# Copy documentation files for UI links
+COPY --from=builder /app/docs /root/docs
+
 # Expose ports
 EXPOSE 8080 9090
 

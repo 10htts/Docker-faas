@@ -4,7 +4,13 @@
       "Bash(go build:*)",
       "Bash(go test:*)",
       "Bash($env:CGO_ENABLED=1)",
-      "Bash(set CGO_ENABLED=1)"
+      "Bash(set CGO_ENABLED=1)",
+      "Bash(timeout:*)",
+      "Bash(docker-compose down:*)",
+      "Bash(docker-compose build:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(curl:*)"
     ]
   }
 }
