@@ -2,8 +2,8 @@
 set -euo pipefail
 
 GATEWAY="${GATEWAY:-http://localhost:8080}"
-USERNAME="${USERNAME:-admin}"
-PASSWORD="${PASSWORD:-admin}"
+AUTH_USER="${AUTH_USER:-${DOCKER_FAAS_USER:-admin}}"
+AUTH_PASSWORD="${AUTH_PASSWORD:-${DOCKER_FAAS_PASSWORD:-admin}}"
 DEBUG_BIND_ADDRESS="${DEBUG_BIND_ADDRESS:-127.0.0.1}"
 
 SERVICE="debug-test-$RANDOM"
@@ -18,14 +18,14 @@ fail() {
 }
 
 cleanup() {
-  curl -s -u "${USERNAME}:${PASSWORD}" -X DELETE "${GATEWAY}/system/functions?functionName=${SERVICE}" >/dev/null || true
+  curl -s -u "${AUTH_USER}:${AUTH_PASSWORD}" -X DELETE "${GATEWAY}/system/functions?functionName=${SERVICE}" >/dev/null || true
 }
 
 trap cleanup EXIT
 
 echo "Debug mode E2E tests"
 
-deploy_response="$(curl -s -u "${USERNAME}:${PASSWORD}" -X POST "${GATEWAY}/system/functions" \
+deploy_response="$(curl -s -u "${AUTH_USER}:${AUTH_PASSWORD}" -X POST "${GATEWAY}/system/functions" \
   -H "Content-Type: application/json" \
   -d "{
     \"service\": \"${SERVICE}\",

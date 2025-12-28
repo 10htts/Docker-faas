@@ -1,3 +1,12 @@
 name: uppercase-bash
 runtime: bash
 command: "bash handler.sh"
+env:
+  LOG_LEVEL: info
+labels:
+  tier: demo
+secrets:
+  - demo-secret
+limits:
+  memory: "128m"
+  cpu: "0.25"

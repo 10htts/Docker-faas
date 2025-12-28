@@ -203,7 +203,7 @@ echo "Using API key: ${API_KEY}"
 
 ## Secret Validation
 
-Docker FaaS validates that all required secrets exist before deploying a function:
+Docker FaaS validates that all required secrets exist before deploying a function. Missing secrets are auto-created as empty placeholders (with a warning), so the deployment can proceed:
 
 ```bash
 # Create secrets first
@@ -212,8 +212,8 @@ echo -n "key123" | faas-cli secret create api-key
 # Deploy function with secret
 faas-cli deploy -f stack.yml
 
-# If secret is missing, deployment will fail with error:
-# Error: secret validation failed: missing secrets: [db-password]
+# If a secret is missing, the gateway auto-creates it as an empty file and logs a warning.
+# Update the secret value after deployment if your function depends on it.
 ```
 
 ## Security Features

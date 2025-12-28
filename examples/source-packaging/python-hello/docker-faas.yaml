@@ -5,3 +5,8 @@ env:
   LOG_LEVEL: info
 labels:
   tier: demo
+secrets:
+  - demo-secret
+limits:
+  memory: "256m"
+  cpu: "0.5"

@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/sirupsen/logrus"
@@ -195,4 +196,25 @@ func (sm *SecretManager) ValidateSecrets(secretNames []string) error {
 	}
 
 	return nil
+}
+
+// EnsureSecrets creates any missing secrets with empty values.
+func (sm *SecretManager) EnsureSecrets(secretNames []string) ([]string, error) {
+	created := []string{}
+	for _, name := range secretNames {
+		if strings.TrimSpace(name) == "" {
+			continue
+		}
+		if sm.SecretExists(name) {
+			continue
+		}
+		if err := sm.CreateSecret(name, ""); err != nil {
+			if sm.SecretExists(name) {
+				continue
+			}
+			return created, err
+		}
+		created = append(created, name)
+	}
+	return created, nil
 }

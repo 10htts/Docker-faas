@@ -5,3 +5,11 @@ dependencies:
   - requirements.txt
 env:
   POLARS_FMT_STR_LEN: "80"
+  LOG_LEVEL: info
+labels:
+  tier: demo
+secrets:
+  - demo-secret
+limits:
+  memory: "512m"
+  cpu: "1"

@@ -2,8 +2,8 @@
 set -euo pipefail
 
 GATEWAY="${GATEWAY:-http://localhost:8080}"
-USERNAME="${USERNAME:-admin}"
-PASSWORD="${PASSWORD:-admin}"
+AUTH_USER="${AUTH_USER:-${DOCKER_FAAS_USER:-admin}}"
+AUTH_PASSWORD="${AUTH_PASSWORD:-${DOCKER_FAAS_PASSWORD:-admin}}"
 BASE_NETWORK="${FUNCTIONS_NETWORK:-docker-faas-net}"
 GATEWAY_CONTAINER_NAME="${GATEWAY_CONTAINER_NAME:-docker-faas-gateway}"
 
@@ -20,8 +20,8 @@ fail() {
 }
 
 cleanup() {
-  curl -s -u "${USERNAME}:${PASSWORD}" -X DELETE "${GATEWAY}/system/functions?functionName=${SERVICE_A}" >/dev/null || true
-  curl -s -u "${USERNAME}:${PASSWORD}" -X DELETE "${GATEWAY}/system/functions?functionName=${SERVICE_B}" >/dev/null || true
+  curl -s -u "${AUTH_USER}:${AUTH_PASSWORD}" -X DELETE "${GATEWAY}/system/functions?functionName=${SERVICE_A}" >/dev/null || true
+  curl -s -u "${AUTH_USER}:${AUTH_PASSWORD}" -X DELETE "${GATEWAY}/system/functions?functionName=${SERVICE_B}" >/dev/null || true
 }
 
 trap cleanup EXIT
@@ -31,7 +31,7 @@ echo "Network isolation E2E tests"
 deploy() {
   local service="$1"
   local response
-  response="$(curl -s -u "${USERNAME}:${PASSWORD}" -X POST "${GATEWAY}/system/functions" \
+  response="$(curl -s -u "${AUTH_USER}:${AUTH_PASSWORD}" -X POST "${GATEWAY}/system/functions" \
     -H "Content-Type: application/json" \
     -d "{
       \"service\": \"${service}\",

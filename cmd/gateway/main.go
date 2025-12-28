@@ -69,6 +69,8 @@ func main() {
 	r.HandleFunc("/system/functions", gw.HandleDeployFunction).Methods("POST")
 	r.HandleFunc("/system/functions", gw.HandleUpdateFunction).Methods("PUT")
 	r.HandleFunc("/system/functions", gw.HandleDeleteFunction).Methods("DELETE")
+	r.HandleFunc("/system/builds", gw.HandleBuildFunction).Methods("POST")
+	r.HandleFunc("/system/builds/inspect", gw.HandleInspectBuild).Methods("POST")
 	r.HandleFunc("/system/function/{name}/containers", gw.HandleFunctionContainers).Methods("GET")
 	r.HandleFunc("/system/scale-function/{name}", gw.HandleScaleFunction).Methods("POST")
 	r.HandleFunc("/system/logs", gw.HandleGetLogs).Methods("GET")

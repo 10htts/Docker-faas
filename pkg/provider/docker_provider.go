@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/errdefs"
 	"github.com/docker/go-connections/nat"
 	"github.com/sirupsen/logrus"
 
@@ -167,6 +169,11 @@ func (p *DockerProvider) DeployFunction(ctx context.Context, deployment *faasTyp
 
 // pullImage pulls the Docker image
 func (p *DockerProvider) pullImage(ctx context.Context, imageStr string) error {
+	if p.imageExists(ctx, imageStr) {
+		p.logger.Infof("Using local image: %s", imageStr)
+		return nil
+	}
+
 	p.logger.Infof("Pulling image: %s", imageStr)
 
 	reader, err := p.client.ImagePull(ctx, imageStr, image.PullOptions{})
@@ -178,6 +185,54 @@ func (p *DockerProvider) pullImage(ctx context.Context, imageStr string) error {
 	// Consume the output to ensure the pull completes
 	_, err = io.Copy(io.Discard, reader)
 	return err
+}
+
+func (p *DockerProvider) imageExists(ctx context.Context, imageStr string) bool {
+	_, _, err := p.client.ImageInspectWithRaw(ctx, imageStr)
+	if err == nil {
+		return true
+	}
+	if errdefs.IsNotFound(err) {
+		return false
+	}
+	p.logger.Debugf("Image inspect failed for %s: %v", imageStr, err)
+	return false
+}
+
+func (p *DockerProvider) resolveSecretsHostPath(ctx context.Context) string {
+	basePath := p.secretManager.GetBasePath()
+	if p.gatewayID == "" {
+		return basePath
+	}
+
+	inspect, err := p.client.ContainerInspect(ctx, p.gatewayID)
+	if err != nil {
+		p.logger.Debugf("Failed to inspect gateway container for secrets mount: %v", err)
+		return basePath
+	}
+
+	for _, m := range inspect.Mounts {
+		if m.Destination != secrets.ContainerSecretsPath && m.Destination != basePath {
+			continue
+		}
+		if m.Type == "bind" && m.Source != "" {
+			return m.Source
+		}
+		if m.Type == "volume" && m.Name != "" {
+			vol, err := p.client.VolumeInspect(ctx, m.Name)
+			if err == nil && vol.Mountpoint != "" {
+				return vol.Mountpoint
+			}
+			if err != nil {
+				p.logger.Debugf("Volume inspect failed for %s: %v", m.Name, err)
+			}
+		}
+		if m.Source != "" {
+			return m.Source
+		}
+	}
+
+	return basePath
 }
 
 // createContainer creates and starts a function container
@@ -279,6 +334,14 @@ func (p *DockerProvider) createContainer(ctx context.Context, deployment *faasTy
 
 	// Mount secrets if specified
 	if len(deployment.Secrets) > 0 {
+		created, err := p.secretManager.EnsureSecrets(deployment.Secrets)
+		if err != nil {
+			return fmt.Errorf("failed to ensure secrets: %w", err)
+		}
+		if len(created) > 0 {
+			p.logger.Warnf("Auto-created missing secrets for %s: %s", deployment.Service, strings.Join(created, ", "))
+		}
+
 		// Validate secrets exist
 		if err := p.secretManager.ValidateSecrets(deployment.Secrets); err != nil {
 			return fmt.Errorf("secret validation failed: %w", err)
@@ -286,8 +349,9 @@ func (p *DockerProvider) createContainer(ctx context.Context, deployment *faasTy
 
 		// Create bind mounts for each secret
 		mounts := make([]mount.Mount, 0, len(deployment.Secrets))
+		hostSecretsPath := p.resolveSecretsHostPath(ctx)
 		for _, secretName := range deployment.Secrets {
-			secretPath := p.secretManager.GetSecretPath(secretName)
+			secretPath := filepath.Join(hostSecretsPath, secretName)
 			mounts = append(mounts, mount.Mount{
 				Type:     mount.TypeBind,
 				Source:   secretPath,
@@ -506,6 +570,11 @@ func (p *DockerProvider) GetContainerLogs(ctx context.Context, functionName stri
 // Close closes the Docker client
 func (p *DockerProvider) Close() error {
 	return p.client.Close()
+}
+
+// DockerClient exposes the underlying Docker client for advanced operations.
+func (p *DockerProvider) DockerClient() *client.Client {
+	return p.client
 }
 
 // GetSecretManager returns the secret manager instance

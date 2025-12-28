@@ -125,7 +125,7 @@ func (g *Gateway) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
 // HandleFunctionContainers handles GET /system/function/<name>/containers
 func (g *Gateway) HandleFunctionContainers(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	functionName := vars["name"]
+	functionName := normalizeFunctionName(vars["name"])
 
 	if functionName == "" {
 		http.Error(w, "Function name is required", http.StatusBadRequest)
@@ -291,6 +291,20 @@ func (g *Gateway) HandleUpdateFunction(w http.ResponseWriter, r *http.Request) {
 // HandleDeleteFunction handles DELETE /system/functions
 func (g *Gateway) HandleDeleteFunction(w http.ResponseWriter, r *http.Request) {
 	functionName := r.URL.Query().Get("functionName")
+	if functionName == "" && r.Body != nil {
+		var payload struct {
+			FunctionName string `json:"functionName"`
+			Service      string `json:"service"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err == nil {
+			if payload.FunctionName != "" {
+				functionName = payload.FunctionName
+			} else if payload.Service != "" {
+				functionName = payload.Service
+			}
+		}
+	}
+	functionName = normalizeFunctionName(functionName)
 	if functionName == "" {
 		http.Error(w, "functionName parameter is required", http.StatusBadRequest)
 		return
@@ -334,9 +348,31 @@ func (g *Gateway) HandleDeleteFunction(w http.ResponseWriter, r *http.Request) {
 // HandleScaleFunction handles POST /system/scale-function/<name>
 func (g *Gateway) HandleScaleFunction(w http.ResponseWriter, r *http.Request) {
 	var scaleReq types.ScaleServiceRequest
-	if err := json.NewDecoder(r.Body).Decode(&scaleReq); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
+	if r.Body != nil {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+		if len(body) > 0 {
+			if err := json.Unmarshal(body, &scaleReq); err != nil {
+				http.Error(w, "Invalid request body", http.StatusBadRequest)
+				return
+			}
+			if scaleReq.ServiceName == "" {
+				var alt struct {
+					Service      string `json:"service"`
+					FunctionName string `json:"functionName"`
+				}
+				if err := json.Unmarshal(body, &alt); err == nil {
+					if alt.Service != "" {
+						scaleReq.ServiceName = alt.Service
+					} else if alt.FunctionName != "" {
+						scaleReq.ServiceName = alt.FunctionName
+					}
+				}
+			}
+		}
 	}
 
 	if scaleReq.ServiceName == "" {
@@ -344,6 +380,7 @@ func (g *Gateway) HandleScaleFunction(w http.ResponseWriter, r *http.Request) {
 			scaleReq.ServiceName = name
 		}
 	}
+	scaleReq.ServiceName = normalizeFunctionName(scaleReq.ServiceName)
 
 	if scaleReq.ServiceName == "" {
 		http.Error(w, "serviceName is required", http.StatusBadRequest)
@@ -400,7 +437,7 @@ func (g *Gateway) HandleScaleFunction(w http.ResponseWriter, r *http.Request) {
 
 // HandleGetLogs handles GET /system/logs?name=<function>
 func (g *Gateway) HandleGetLogs(w http.ResponseWriter, r *http.Request) {
-	functionName := r.URL.Query().Get("name")
+	functionName := normalizeFunctionName(r.URL.Query().Get("name"))
 	if functionName == "" {
 		http.Error(w, "name parameter is required", http.StatusBadRequest)
 		return
@@ -428,7 +465,7 @@ func (g *Gateway) HandleGetLogs(w http.ResponseWriter, r *http.Request) {
 // HandleInvokeFunction handles POST /function/<name>
 func (g *Gateway) HandleInvokeFunction(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	functionName := vars["name"]
+	functionName := normalizeFunctionName(vars["name"])
 
 	if functionName == "" {
 		http.Error(w, "Function name is required", http.StatusBadRequest)
@@ -483,6 +520,16 @@ func (g *Gateway) HandleInvokeFunction(w http.ResponseWriter, r *http.Request) {
 	// Record metrics
 	duration := time.Since(startTime).Seconds()
 	metrics.RecordFunctionInvocation(functionName, resp.StatusCode, duration)
+}
+
+func normalizeFunctionName(name string) string {
+	name = strings.TrimSpace(name)
+	for _, suffix := range []string{".openfaas-fn", ".openfaas"} {
+		if strings.HasSuffix(name, suffix) {
+			return strings.TrimSuffix(name, suffix)
+		}
+	}
+	return name
 }
 
 // HandleHealthz handles GET /healthz

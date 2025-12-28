@@ -19,7 +19,7 @@ RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o docker-faas-gatew
 # Final stage
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y ca-certificates sqlite3 libsqlite3-0 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates sqlite3 libsqlite3-0 git && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /root/
 

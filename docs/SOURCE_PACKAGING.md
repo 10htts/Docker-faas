@@ -206,3 +206,58 @@ A: The builder may attempt auto-detection, but this is not recommended for produ
 ## Examples and Templates
 
 See `docs/SOURCE_EXAMPLES.md` for ready-to-zip examples and starter templates.
+
+## Build API Payload (Proposed)
+
+The UI emits a proposed payload for a future `/system/builds` endpoint. This is a draft format to standardize source builds.
+
+### Zip Upload
+```json
+{
+  "name": "hello-python",
+  "source": {
+    "type": "zip",
+    "runtime": "python",
+    "zip": {
+      "filename": "hello-python.zip"
+    },
+    "manifest": "name: hello-python\nruntime: python\ncommand: \"python handler.py\""
+  }
+}
+```
+
+### Git Repository
+```json
+{
+  "name": "hello-python",
+  "source": {
+    "type": "git",
+    "runtime": "python",
+    "git": {
+      "url": "https://github.com/org/repo.git",
+      "ref": "main",
+      "path": "."
+    }
+  }
+}
+```
+
+### Inline Files (Editor)
+```json
+{
+  "name": "hello-python",
+  "source": {
+    "type": "git",
+    "runtime": "python",
+    "git": {
+      "url": "https://github.com/org/repo.git",
+      "ref": "main",
+      "path": "."
+    },
+    "files": [
+      { "path": "handler.py", "content": "print('hello')\n" },
+      { "path": "docker-faas.yaml", "content": "name: hello-python\nruntime: python\ncommand: \"python handler.py\"\n" }
+    ]
+  }
+}
+```

@@ -1,20 +1,24 @@
+//go:build integration
 // +build integration
 
 package integration
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/json"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/docker-faas/docker-faas/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/docker-faas/docker-faas/pkg/types"
 )
 
 const (
@@ -25,7 +29,7 @@ const (
 
 func TestIntegration(t *testing.T) {
 	client := &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: 5 * time.Minute,
 	}
 
 	// Wait for gateway to be ready
@@ -158,6 +162,45 @@ func TestIntegration(t *testing.T) {
 		assert.NotEmpty(t, body)
 	})
 
+	t.Run("BuildFromZip", func(t *testing.T) {
+		zipPayload := buildZipPayload(t)
+		body := &bytes.Buffer{}
+		writer := multipart.NewWriter(body)
+
+		require.NoError(t, writer.WriteField("name", "build-zip-echo"))
+		require.NoError(t, writer.WriteField("runtime", "python"))
+		require.NoError(t, writer.WriteField("sourceType", "zip"))
+		require.NoError(t, writer.WriteField("deploy", "true"))
+
+		part, err := writer.CreateFormFile("file", "build-zip-echo.zip")
+		require.NoError(t, err)
+		_, err = part.Write(zipPayload.Bytes())
+		require.NoError(t, err)
+
+		require.NoError(t, writer.Close())
+
+		resp, err := makeMultipartRequest(client, "POST", gatewayURL+"/system/builds", body, writer.FormDataContentType())
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusAccepted, resp.StatusCode)
+
+		waitForFunction(t, client, "build-zip-echo", 2*time.Minute)
+
+		testData := "Zip Build"
+		resp, err = makeRequest(client, "POST", gatewayURL+"/function/build-zip-echo", bytes.NewReader([]byte(testData)))
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		responseBody, _ := io.ReadAll(resp.Body)
+		assert.Contains(t, string(responseBody), testData)
+
+		resp, err = makeRequest(client, "DELETE", gatewayURL+"/system/functions?functionName=build-zip-echo", nil)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		assert.Equal(t, http.StatusAccepted, resp.StatusCode)
+	})
+
 	t.Run("DeleteFunction", func(t *testing.T) {
 		resp, err := makeRequest(client, "DELETE", gatewayURL+"/system/functions?functionName=test-echo", nil)
 		require.NoError(t, err)
@@ -190,6 +233,90 @@ func makeRequest(client *http.Client, method, url string, body io.Reader) (*http
 	req.Header.Set("Content-Type", "application/json")
 
 	return client.Do(req)
+}
+
+func makeMultipartRequest(client *http.Client, method, url string, body io.Reader, contentType string) (*http.Response, error) {
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.SetBasicAuth(username, password)
+	req.Header.Set("Content-Type", contentType)
+
+	return client.Do(req)
+}
+
+func buildZipPayload(t *testing.T) *bytes.Buffer {
+	t.Helper()
+
+	var buffer bytes.Buffer
+	zipWriter := zip.NewWriter(&buffer)
+
+	writeZipFile(t, zipWriter, "docker-faas.yaml", strings.TrimSpace(`
+name: build-zip-echo
+runtime: python
+command: "python handler.py"
+`)+"\n")
+	writeZipFile(t, zipWriter, "handler.py", strings.TrimSpace(`
+import sys
+
+
+def main():
+    payload = sys.stdin.read().strip()
+    if payload:
+        print("zip-build: " + payload)
+    else:
+        print("zip-build: ready")
+
+
+if __name__ == "__main__":
+    main()
+`)+"\n")
+
+	require.NoError(t, zipWriter.Close())
+	return &buffer
+}
+
+func writeZipFile(t *testing.T, zipWriter *zip.Writer, name, content string) {
+	t.Helper()
+
+	writer, err := zipWriter.Create(name)
+	require.NoError(t, err)
+	_, err = writer.Write([]byte(content))
+	require.NoError(t, err)
+}
+
+func waitForFunction(t *testing.T, client *http.Client, name string, timeout time.Duration) {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			t.Fatalf("Function %s did not become ready in time", name)
+		case <-ticker.C:
+			resp, err := makeRequest(client, "GET", gatewayURL+"/system/functions", nil)
+			if err != nil {
+				continue
+			}
+			funcs := []types.FunctionStatus{}
+			if err := json.NewDecoder(resp.Body).Decode(&funcs); err == nil {
+				for _, fn := range funcs {
+					if fn.Name == name {
+						resp.Body.Close()
+						return
+					}
+				}
+			}
+			resp.Body.Close()
+		}
+	}
 }
 
 func waitForGateway(t *testing.T, client *http.Client) {

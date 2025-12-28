@@ -1,3 +1,12 @@
 name: python-basic
 runtime: python
 command: "python handler.py"
+env:
+  LOG_LEVEL: info
+labels:
+  tier: template
+secrets:
+  - demo-secret
+limits:
+  memory: "256m"
+  cpu: "0.5"

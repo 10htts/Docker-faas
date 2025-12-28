@@ -57,6 +57,75 @@ List all deployed functions.
 ]
 ```
 
+### POST /system/builds
+
+Build a function image from source (zip or Git) and optionally deploy it.
+
+**JSON (Git) Example:**
+```json
+{
+  "name": "hello-python",
+  "deploy": true,
+  "source": {
+    "type": "git",
+    "runtime": "python",
+    "git": {
+      "url": "https://github.com/org/repo.git",
+      "ref": "main",
+      "path": "."
+    },
+    "manifest": "name: hello-python\nruntime: python\ncommand: \"python handler.py\""
+  }
+}
+```
+
+**Multipart (Zip) Example:**
+- `name`: function name
+- `runtime`: runtime name
+- `sourceType`: `zip`
+- `deploy`: `true`
+- `manifest`: optional docker-faas.yaml contents
+- `files`: optional JSON array of inline files (supports `remove`)
+- `file`: zip file upload
+
+**Response:**
+```json
+{
+  "name": "hello-python",
+  "image": "docker-faas/hello-python:1700000000",
+  "deployed": true,
+  "updated": false
+}
+```
+
+### POST /system/builds/inspect
+
+Inspect a source bundle (zip or Git) and return the detected `docker-faas.yaml` contents.
+
+**Request:** Same payload format as `/system/builds` (JSON or multipart).
+
+**Response:**
+```json
+{
+  "name": "hello-python",
+  "runtime": "python",
+  "command": "python handler.py",
+  "manifest": "name: hello-python\nruntime: python\ncommand: \"python handler.py\"",
+  "files": [
+    {
+      "path": "handler.py",
+      "content": "print(\"hello\")\n",
+      "editable": true
+    },
+    {
+      "path": "data/sample.png",
+      "editable": false
+    }
+  ]
+}
+```
+Notes: `files` includes text files up to 200KB. Binary or larger files return `editable: false`.
+
 ### POST /system/functions
 
 Deploy a new function.

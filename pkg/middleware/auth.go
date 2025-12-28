@@ -3,6 +3,7 @@ package middleware
 import (
 	"crypto/subtle"
 	"net/http"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 )
@@ -34,11 +35,16 @@ func (m *BasicAuthMiddleware) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Skip auth for health check endpoint
-		if r.URL.Path == "/healthz" {
-			next.ServeHTTP(w, r)
-			return
-		}
+	// Skip auth for health check endpoint
+	if r.URL.Path == "/healthz" {
+		next.ServeHTTP(w, r)
+		return
+	}
+	// Allow unauthenticated function invocation for OpenFaaS compatibility.
+	if strings.HasPrefix(r.URL.Path, "/function/") {
+		next.ServeHTTP(w, r)
+		return
+	}
 
 		// Get credentials from request
 		username, password, ok := r.BasicAuth()

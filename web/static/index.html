@@ -258,7 +258,7 @@
                 </div>
 
                 <form id="function-form" class="detail-form">
-                    <div class="form-section" id="env-section">
+                    <div class="form-section" id="deploy-mode-section">
                         <h3>Deployment Type</h3>
                         <div class="form-group">
                             <label for="form-deploy-mode">Mode</label>
@@ -268,29 +268,6 @@
                             </select>
                         </div>
                         <small>Source mode expects a `docker-faas.yaml` or Dockerfile. See Source Packaging docs.</small>
-                    </div>
-
-                    <div class="form-section" id="labels-section">
-                        <h3>Basic Configuration</h3>
-                        <div class="form-group">
-                            <label for="form-service">Function Name *</label>
-                            <input type="text" id="form-service" required>
-                        </div>
-                        <div class="form-group" id="image-config">
-                            <label for="form-image">Image *</label>
-                            <input type="text" id="form-image" placeholder="ghcr.io/openfaas/alpine:latest" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="form-network">Network</label>
-                            <input type="text" id="form-network" placeholder="docker-faas-net">
-                        </div>
-                        <div class="form-group checkbox-group">
-                            <label>
-                                <input type="checkbox" id="form-network-auto" checked>
-                                Auto network (derived from name)
-                            </label>
-                        </div>
-                        <small>When auto is enabled, the gateway derives the network from the function name.</small>
                     </div>
 
                     <div class="form-section" id="source-config" style="display:none;">
@@ -320,44 +297,90 @@
                                 <input type="text" id="form-source-path" class="form-control" placeholder=".">
                             </div>
                         </div>
-                        <div class="form-group">
+                        <div class="form-group" id="source-runtime-group">
                             <label for="form-source-runtime">Runtime</label>
                             <select id="form-source-runtime" class="form-select">
+                                <option value="">Auto (from manifest)</option>
                                 <option value="python">Python</option>
                                 <option value="go">Go</option>
                                 <option value="node">Node</option>
                                 <option value="bash">Bash</option>
                             </select>
                         </div>
-                        <div class="form-group">
-                            <label for="form-source-manifest">docker-faas.yaml (optional)</label>
-                            <textarea id="form-source-manifest" class="form-textarea" rows="10" placeholder="name: my-func&#10;runtime: python&#10;command: &quot;python handler.py&quot;"></textarea>
-                            <small>Use this to override runtime, env, labels, secrets, and limits.</small>
+                        <div class="form-row">
+                            <button type="button" class="btn btn-primary" id="source-load-btn">Load Source</button>
+                            <span id="source-load-status" class="text-muted"></span>
                         </div>
                         <div id="source-warning" class="warning-message" style="display:none;">
                             Source builds require the build API and local builder on the gateway host.
                         </div>
                     </div>
 
-                    <div class="form-section" id="secrets-section">
+                    <div class="form-section" id="basic-section">
+                        <h3>Basic Configuration</h3>
+                        <div class="form-group">
+                            <label for="form-service">Function Name *</label>
+                            <input type="text" id="form-service" required>
+                        </div>
+                        <div class="form-group" id="image-config">
+                            <label for="form-image">Image *</label>
+                            <input type="text" id="form-image" placeholder="ghcr.io/openfaas/alpine:latest" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="form-network">Network</label>
+                            <input type="text" id="form-network" placeholder="docker-faas-net">
+                        </div>
+                        <div class="form-group checkbox-group">
+                            <label>
+                                <input type="checkbox" id="form-network-auto" checked>
+                                Auto network (derived from name)
+                            </label>
+                        </div>
+                        <small>When auto is enabled, the gateway derives the network from the function name.</small>
+                    </div>
+
+                    <div class="form-section" id="source-editor-section" style="display:none;">
+                        <h3>Review and Edit</h3>
+                        <div class="form-group">
+                            <label for="form-source-manifest">docker-faas.yaml</label>
+                            <textarea id="form-source-manifest" class="form-textarea" rows="10" placeholder="name: my-func&#10;runtime: python&#10;command: &quot;python handler.py&quot;"></textarea>
+                            <small>Update runtime, env, labels, secrets, and limits here before building.</small>
+                        </div>
+                        <h4 class="form-subtitle">Source Files</h4>
+                        <div class="form-row">
+                            <input type="text" id="source-file-path" class="form-control" placeholder="handler.py">
+                            <button type="button" class="btn btn-secondary" id="source-file-add">Add File</button>
+                            <button type="button" class="btn btn-secondary" id="source-files-refresh">Refresh List</button>
+                        </div>
+                        <div class="source-file-layout">
+                            <div id="source-file-list" class="source-file-list"></div>
+                            <textarea id="source-file-content" class="form-textarea" rows="12" placeholder="File contents..." disabled></textarea>
+                        </div>
+                        <div class="form-row">
+                            <button type="button" class="btn btn-danger" id="source-file-remove" disabled>Remove File</button>
+                        </div>
+                        <small>Inline files are sent to the build API when supported.</small>
+                    </div>
+
+                    <div class="form-section" id="env-section">
                         <h3>Environment Variables</h3>
                         <textarea id="form-env" class="form-textarea" placeholder='{"KEY": "value"}'></textarea>
                         <small>JSON format</small>
                     </div>
 
-                    <div class="form-section" id="limits-section">
+                    <div class="form-section" id="labels-section">
                         <h3>Labels</h3>
                         <textarea id="form-labels" class="form-textarea" placeholder='{"app": "myapp"}'></textarea>
                         <small>JSON format</small>
                     </div>
 
-                    <div class="form-section" id="advanced-section">
+                    <div class="form-section" id="secrets-section">
                         <h3>Secrets</h3>
                         <input type="text" id="form-secrets" placeholder="secret1,secret2">
                         <small>Comma-separated secret names</small>
                     </div>
 
-                    <div class="form-section">
+                    <div class="form-section" id="limits-section">
                         <h3>Resource Limits</h3>
                         <div class="form-row">
                             <div class="form-group">
@@ -371,7 +394,7 @@
                         </div>
                     </div>
 
-                    <div class="form-section">
+                    <div class="form-section" id="advanced-section">
                         <h3>Advanced Options</h3>
                         <div class="form-group checkbox-group">
                             <label>

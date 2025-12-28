@@ -3,3 +3,12 @@ runtime: python
 command: "python handler.py"
 dependencies:
   - requirements.txt
+env:
+  LOG_LEVEL: info
+labels:
+  tier: template
+secrets:
+  - demo-secret
+limits:
+  memory: "256m"
+  cpu: "0.5"

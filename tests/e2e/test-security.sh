@@ -2,8 +2,8 @@
 set -euo pipefail
 
 GATEWAY="${GATEWAY:-http://localhost:8080}"
-USERNAME="${USERNAME:-admin}"
-PASSWORD="${PASSWORD:-admin}"
+AUTH_USER="${AUTH_USER:-${DOCKER_FAAS_USER:-admin}}"
+AUTH_PASSWORD="${AUTH_PASSWORD:-${DOCKER_FAAS_PASSWORD:-admin}}"
 
 SERVICE="security-test-$RANDOM"
 SECRET_NAME="security-secret-$RANDOM"
@@ -18,8 +18,8 @@ fail() {
 }
 
 cleanup() {
-  curl -s -u "${USERNAME}:${PASSWORD}" -X DELETE "${GATEWAY}/system/functions?functionName=${SERVICE}" >/dev/null || true
-  curl -s -u "${USERNAME}:${PASSWORD}" -X DELETE "${GATEWAY}/system/secrets?name=${SECRET_NAME}" >/dev/null || true
+  curl -s -u "${AUTH_USER}:${AUTH_PASSWORD}" -X DELETE "${GATEWAY}/system/functions?functionName=${SERVICE}" >/dev/null || true
+  curl -s -u "${AUTH_USER}:${AUTH_PASSWORD}" -X DELETE "${GATEWAY}/system/secrets?name=${SECRET_NAME}" >/dev/null || true
 }
 
 trap cleanup EXIT
@@ -33,7 +33,7 @@ else
   fail "expected 401/403 without auth, got ${status}"
 fi
 
-create_secret="$(curl -s -u "${USERNAME}:${PASSWORD}" -X POST "${GATEWAY}/system/secrets" \
+create_secret="$(curl -s -u "${AUTH_USER}:${AUTH_PASSWORD}" -X POST "${GATEWAY}/system/secrets" \
   -H "Content-Type: application/json" \
   -d "{\"name\":\"${SECRET_NAME}\",\"value\":\"secret-value\"}" \
   -w "\n%{http_code}")"
@@ -44,7 +44,7 @@ else
   fail "expected 201 creating secret, got ${status}"
 fi
 
-deploy_response="$(curl -s -u "${USERNAME}:${PASSWORD}" -X POST "${GATEWAY}/system/functions" \
+deploy_response="$(curl -s -u "${AUTH_USER}:${AUTH_PASSWORD}" -X POST "${GATEWAY}/system/functions" \
   -H "Content-Type: application/json" \
   -d "{
     \"service\": \"${SERVICE}\",

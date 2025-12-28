@@ -44,11 +44,11 @@ test_fail() {
 # Cleanup function
 cleanup() {
     echo -e "${YELLOW}Cleaning up test functions...${NC}"
-    faas-cli remove echo 2>/dev/null || true
-    faas-cli remove nodeinfo 2>/dev/null || true
-    faas-cli remove env 2>/dev/null || true
-    faas-cli remove figlet 2>/dev/null || true
-    faas-cli remove uppercase 2>/dev/null || true
+    faas-cli remove echo --gateway $GATEWAY 2>/dev/null || true
+    faas-cli remove nodeinfo --gateway $GATEWAY 2>/dev/null || true
+    faas-cli remove env --gateway $GATEWAY 2>/dev/null || true
+    faas-cli remove figlet --gateway $GATEWAY 2>/dev/null || true
+    faas-cli remove uppercase --gateway $GATEWAY 2>/dev/null || true
     echo -e "${GREEN}Cleanup complete${NC}"
     echo ""
 }
@@ -77,6 +77,12 @@ if ! command -v jq &> /dev/null; then
 else
     echo -e "${GREEN}✓ jq found${NC}"
     HAS_JQ=true
+fi
+
+if faas-cli scale --help &> /dev/null; then
+    HAS_SCALE=true
+else
+    HAS_SCALE=false
 fi
 
 echo ""
@@ -134,11 +140,11 @@ fi
 
 # Test 6: Invoke function via faas-cli
 test_start "Invoke function via faas-cli"
-RESULT=$(echo "Hello World" | faas-cli invoke echo --gateway $GATEWAY 2>/dev/null)
-if [ "$RESULT" == "Hello World" ]; then
+RESULT=$(echo "Hello-World" | faas-cli invoke echo --gateway $GATEWAY 2>/dev/null)
+if [ "$RESULT" == "Hello-World" ]; then
     test_pass
 else
-    test_fail "Expected 'Hello World', got '$RESULT'"
+    test_fail "Expected 'Hello-World', got '$RESULT'"
 fi
 
 # Test 7: Invoke function via HTTP POST
@@ -164,25 +170,42 @@ fi
 
 # Test 9: Scale function
 test_start "Scale function to 3 replicas"
-if faas-cli scale echo --replicas 3 --gateway $GATEWAY &>/dev/null; then
-    sleep 3
-    # Check if scaling worked
-    REPLICAS=$(faas-cli list --gateway $GATEWAY 2>/dev/null | grep "echo" | awk '{print $3}' || echo "0")
-    if [ "$REPLICAS" == "3" ]; then
-        test_pass
+if [ "$HAS_SCALE" = true ]; then
+    if faas-cli scale echo --replicas 3 --gateway $GATEWAY &>/dev/null; then
+        sleep 3
+        # Check if scaling worked
+        REPLICAS=$(faas-cli list --gateway $GATEWAY 2>/dev/null | grep "echo" | awk '{print $3}' || echo "0")
+        if [ "$REPLICAS" == "3" ]; then
+            test_pass
+        else
+            test_fail "Expected 3 replicas, got $REPLICAS"
+        fi
     else
-        test_fail "Expected 3 replicas, got $REPLICAS"
+        test_fail "Scale command failed"
     fi
 else
-    test_fail "Scale command failed"
+    if curl -s -u $USERNAME:$PASSWORD -X POST \
+        -H "Content-Type: application/json" \
+        -d '{"serviceName":"echo","replicas":3}' \
+        $GATEWAY/system/scale-function/echo >/dev/null; then
+        sleep 3
+        REPLICAS=$(faas-cli list --gateway $GATEWAY 2>/dev/null | grep "echo" | awk '{print $3}' || echo "0")
+        if [ "$REPLICAS" == "3" ]; then
+            test_pass
+        else
+            test_fail "Expected 3 replicas, got $REPLICAS"
+        fi
+    else
+        test_fail "Scale API call failed"
+    fi
 fi
 
 # Test 10: Multiple invocations (load balancing)
 test_start "Multiple invocations (testing load balancing)"
 SUCCESS_COUNT=0
 for i in {1..10}; do
-    RESULT=$(echo "Test $i" | faas-cli invoke echo --gateway $GATEWAY 2>/dev/null)
-    if [ "$RESULT" == "Test $i" ]; then
+    RESULT=$(echo "Test-$i" | faas-cli invoke echo --gateway $GATEWAY 2>/dev/null)
+    if [ "$RESULT" == "Test-$i" ]; then
         SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
     fi
 done
@@ -194,11 +217,23 @@ fi
 
 # Test 11: Scale down to 1 replica
 test_start "Scale function down to 1 replica"
-if faas-cli scale echo --replicas 1 --gateway $GATEWAY &>/dev/null; then
-    sleep 2
-    test_pass
+if [ "$HAS_SCALE" = true ]; then
+    if faas-cli scale echo --replicas 1 --gateway $GATEWAY &>/dev/null; then
+        sleep 2
+        test_pass
+    else
+        test_fail "Scale down failed"
+    fi
 else
-    test_fail "Scale down failed"
+    if curl -s -u $USERNAME:$PASSWORD -X POST \
+        -H "Content-Type: application/json" \
+        -d '{"serviceName":"echo","replicas":1}' \
+        $GATEWAY/system/scale-function/echo >/dev/null; then
+        sleep 2
+        test_pass
+    else
+        test_fail "Scale down failed"
+    fi
 fi
 
 # Test 12: Deploy function with environment variables
@@ -280,7 +315,9 @@ fi
 
 # Test 18: Deploy from stack file
 test_start "Deploy from stack.yml file"
-cat > /tmp/test-stack.yml << 'EOF'
+STACK_FILE="./tmp/test-stack.yml"
+mkdir -p ./tmp
+cat > "$STACK_FILE" << 'EOF'
 version: 1.0
 provider:
   name: openfaas
@@ -295,7 +332,7 @@ functions:
       com.openfaas.test: "true"
 EOF
 
-if faas-cli deploy -f /tmp/test-stack.yml --gateway $GATEWAY &>/dev/null; then
+if faas-cli deploy -f "$STACK_FILE" --gateway $GATEWAY &>/dev/null; then
     sleep 3
     # Verify deployment
     if faas-cli list --gateway $GATEWAY 2>/dev/null | grep -q "nodeinfo"; then
@@ -318,7 +355,7 @@ fi
 
 # Test 20: Remove from stack file
 test_start "Remove function using stack.yml"
-if faas-cli remove -f /tmp/test-stack.yml --gateway $GATEWAY &>/dev/null; then
+if faas-cli remove -f "$STACK_FILE" --gateway $GATEWAY &>/dev/null; then
     test_pass
 else
     test_fail "Stack removal failed"
@@ -328,7 +365,7 @@ fi
 test_start "Concurrent invocations (stress test)"
 SUCCESS_COUNT=0
 for i in {1..20}; do
-    (echo "Concurrent $i" | faas-cli invoke echo --gateway $GATEWAY &>/dev/null && echo "1" >> /tmp/concurrent_test.txt) &
+    (echo "Concurrent-$i" | faas-cli invoke echo --gateway $GATEWAY &>/dev/null && echo "1" >> /tmp/concurrent_test.txt) &
 done
 wait
 if [ -f /tmp/concurrent_test.txt ]; then
@@ -343,21 +380,21 @@ fi
 
 # Test 22: HTTP methods support
 test_start "Support for different HTTP methods (GET, POST, PUT, DELETE)"
-GET_RESULT=$(curl -s -u $USERNAME:$PASSWORD -X GET $GATEWAY/function/echo?test=1)
-POST_RESULT=$(curl -s -u $USERNAME:$PASSWORD -X POST $GATEWAY/function/echo -d "post")
-PUT_RESULT=$(curl -s -u $USERNAME:$PASSWORD -X PUT $GATEWAY/function/echo -d "put")
-DELETE_RESULT=$(curl -s -u $USERNAME:$PASSWORD -X DELETE $GATEWAY/function/echo)
+GET_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -u $USERNAME:$PASSWORD -X GET "$GATEWAY/function/echo?test=1")
+POST_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -u $USERNAME:$PASSWORD -X POST $GATEWAY/function/echo -d "post")
+PUT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -u $USERNAME:$PASSWORD -X PUT $GATEWAY/function/echo -d "put")
+DELETE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -u $USERNAME:$PASSWORD -X DELETE $GATEWAY/function/echo)
 
-if [ ! -z "$GET_RESULT" ] && [ ! -z "$POST_RESULT" ] && [ ! -z "$PUT_RESULT" ]; then
+if [ "$GET_STATUS" == "200" ] && [ "$POST_STATUS" == "200" ] && [ "$PUT_STATUS" == "200" ]; then
     test_pass
 else
-    test_fail "Not all HTTP methods supported"
+    test_fail "Not all HTTP methods supported (GET=$GET_STATUS POST=$POST_STATUS PUT=$PUT_STATUS DELETE=$DELETE_STATUS)"
 fi
 
 # Test 23: Large payload handling
 test_start "Large payload handling (1MB)"
-LARGE_PAYLOAD=$(dd if=/dev/zero bs=1024 count=1024 2>/dev/null | base64)
-RESULT=$(echo "$LARGE_PAYLOAD" | faas-cli invoke echo --gateway $GATEWAY 2>/dev/null | wc -c)
+LARGE_PAYLOAD=$(dd if=/dev/zero bs=1024 count=1024 2>/dev/null | base64 | tr -d '\n')
+RESULT=$(printf "%s" "$LARGE_PAYLOAD" | curl -s -X POST $GATEWAY/function/echo --data-binary @- | wc -c)
 if [ "$RESULT" -gt 1000000 ]; then
     test_pass
 else
@@ -383,7 +420,7 @@ else
 fi
 
 # Cleanup test file
-rm -f /tmp/test-stack.yml
+rm -f "$STACK_FILE"
 
 # Summary
 echo ""

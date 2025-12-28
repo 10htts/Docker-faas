@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+GATEWAY="${GATEWAY:-http://localhost:8080}"
+AUTH_USER="${AUTH_USER:-${DOCKER_FAAS_USER:-admin}}"
+AUTH_PASSWORD="${AUTH_PASSWORD:-${DOCKER_FAAS_PASSWORD:-admin}}"
+SKIP_E2E="${SKIP_E2E:-}"
+SKIP_COMPAT="${SKIP_COMPAT:-}"
+SKIP_UPGRADE="${SKIP_UPGRADE:-}"
+
+printf "Running unit tests...\n"
+go test ./...
+
+if [[ -n "${SKIP_E2E}" ]]; then
+  printf "Skipping E2E tests.\n"
+  exit 0
+fi
+
+export GATEWAY AUTH_USER AUTH_PASSWORD
+
+chmod +x tests/e2e/*.sh
+
+run_e2e() {
+  local script="$1"
+  printf "Running %s...\n" "$script"
+  ./tests/e2e/$script
+}
+
+run_e2e test-security.sh
+run_e2e test-network-isolation.sh
+run_e2e test-debug-mode.sh
+run_e2e test-secrets.sh
+
+if [[ -z "${SKIP_UPGRADE}" ]]; then
+  if command -v sqlite3 >/dev/null 2>&1; then
+    run_e2e test-upgrade.sh
+  else
+    printf "sqlite3 not found; skipping test-upgrade.sh\n"
+  fi
+fi
+
+if [[ -z "${SKIP_COMPAT}" ]]; then
+  if command -v faas-cli >/dev/null 2>&1; then
+    run_e2e openfaas-compatibility-test.sh
+  else
+    printf "faas-cli not found; skipping openfaas-compatibility-test.sh\n"
+  fi
+fi
+
+printf "All requested tests completed.\n"

@@ -82,10 +82,6 @@ func (r *Router) selectContainer(functionName string, containers []*types.Contai
 
 // forwardRequest forwards an HTTP request to a container
 func (r *Router) forwardRequest(ctx context.Context, container *types.Container, req *http.Request) (*http.Response, error) {
-	// Create request context with timeout
-	ctx, cancel := context.WithTimeout(ctx, r.execTimeout)
-	defer cancel()
-
 	// Build target URL (OpenFaaS watchdog listens on port 8080)
 	targetURL := fmt.Sprintf("http://%s:8080", container.IPAddress)
 

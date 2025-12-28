@@ -10,9 +10,16 @@ NC='\033[0m'
 GATEWAY="http://localhost:8080"
 USERNAME="admin"
 PASSWORD="admin"
+MISSING_SECRET="nonexistent-secret"
 
 echo -e "${YELLOW}Testing Secrets Management${NC}"
 echo ""
+
+# Cleanup any prior runs
+curl -s -u $USERNAME:$PASSWORD -X DELETE "$GATEWAY/system/secrets?name=test-secret" > /dev/null || true
+curl -s -u $USERNAME:$PASSWORD -X DELETE "$GATEWAY/system/secrets?name=$MISSING_SECRET" > /dev/null || true
+curl -s -u $USERNAME:$PASSWORD -X DELETE "$GATEWAY/system/functions?functionName=secret-test" > /dev/null || true
+curl -s -u $USERNAME:$PASSWORD -X DELETE "$GATEWAY/system/functions?functionName=missing-secret-test" > /dev/null || true
 
 # Test 1: Create a secret
 echo -e "${YELLOW}TEST 1: Create secret via API${NC}"
@@ -85,8 +92,8 @@ else
     exit 1
 fi
 
-# Test 6: Deploy function with missing secret (should fail)
-echo -e "${YELLOW}TEST 6: Deploy with missing secret (should fail)${NC}"
+# Test 6: Deploy function with missing secret (auto-created)
+echo -e "${YELLOW}TEST 6: Deploy with missing secret (auto-created)${NC}"
 DEPLOY_RESPONSE=$(curl -s -u $USERNAME:$PASSWORD -X POST $GATEWAY/system/functions \
   -H "Content-Type: application/json" \
   -d '{
@@ -97,10 +104,20 @@ DEPLOY_RESPONSE=$(curl -s -u $USERNAME:$PASSWORD -X POST $GATEWAY/system/functio
   -w "\n%{http_code}")
 
 STATUS=$(echo "$DEPLOY_RESPONSE" | tail -n1)
-if [ "$STATUS" == "500" ] || [ "$STATUS" == "400" ]; then
-    echo -e "${GREEN}✓ PASS (correctly rejected)${NC}"
+if [ "$STATUS" == "202" ]; then
+    echo -e "${GREEN}? PASS (auto-created secret)${NC}"
+    sleep 5  # Wait for deployment
 else
-    echo -e "${RED}✗ FAIL: Expected 400/500, got $STATUS${NC}"
+    echo -e "${RED}? FAIL: Expected 202, got $STATUS${NC}"
+    exit 1
+fi
+
+# Verify missing secret was created
+SECRETS=$(curl -s -u $USERNAME:$PASSWORD $GATEWAY/system/secrets)
+if echo "$SECRETS" | grep -q "$MISSING_SECRET"; then
+    echo -e "${GREEN}? PASS (missing secret created)${NC}"
+else
+    echo -e "${RED}? FAIL: Missing secret not created${NC}"
     exit 1
 fi
 
@@ -136,6 +153,8 @@ fi
 # Cleanup
 echo -e "${YELLOW}Cleaning up test function...${NC}"
 curl -s -u $USERNAME:$PASSWORD -X DELETE "$GATEWAY/system/functions?functionName=secret-test" > /dev/null
+curl -s -u $USERNAME:$PASSWORD -X DELETE "$GATEWAY/system/functions?functionName=missing-secret-test" > /dev/null
+curl -s -u $USERNAME:$PASSWORD -X DELETE "$GATEWAY/system/secrets?name=$MISSING_SECRET" > /dev/null
 
 echo ""
 echo -e "${GREEN}========================================${NC}"
