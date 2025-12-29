@@ -81,6 +81,15 @@
                 </svg>
                 Functions
             </button>
+            <button class="nav-item" data-view="builds">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 3h7v7"/>
+                    <path d="M10 14L21 3"/>
+                    <path d="M3 7h7v7H3z"/>
+                    <path d="M3 17h7v4H3z"/>
+                </svg>
+                Builds
+            </button>
             <button class="nav-item" data-view="secrets">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
@@ -94,6 +103,13 @@
                     <line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
                 </svg>
                 Logs
+            </button>
+            <button class="nav-item" data-view="metrics">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="4 14 8 10 12 14 20 6"/>
+                    <path d="M4 20h16"/>
+                </svg>
+                Metrics
             </button>
         </nav>
 
@@ -139,6 +155,9 @@
                     <button class="btn btn-secondary" id="deploy-source-btn">Deploy from Source</button>
                     <button class="btn btn-secondary" id="view-functions-btn">View All Functions</button>
                     <button class="btn btn-secondary" id="manage-secrets-btn">Manage Secrets</button>
+                    <button class="btn btn-secondary" id="export-functions-btn">Export Functions</button>
+                    <button class="btn btn-secondary" id="import-functions-btn">Import Functions</button>
+                    <input type="file" id="import-functions-file" accept="application/json" style="display:none;">
                 </div>
 
                 <div class="info-panel">
@@ -188,6 +207,44 @@
                             <tr><td colspan="7" class="empty-state">No functions deployed</td></tr>
                         </tbody>
                     </table>
+                </div>
+            </div>
+
+            <!-- Build Activity View -->
+            <div id="builds-view" class="view">
+                <div class="view-header">
+                    <h2>Build Activity</h2>
+                    <div class="view-actions">
+                        <button class="btn btn-secondary" id="clear-build-history-btn">Clear History</button>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table" id="builds-table">
+                        <thead>
+                            <tr>
+                                <th>Started</th>
+                                <th>Function</th>
+                                <th>Source</th>
+                                <th>Status</th>
+                                <th>Image</th>
+                                <th>Duration</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="builds-tbody">
+                            <tr><td colspan="7" class="empty-state">No builds recorded</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="detail-section" id="build-detail-panel" style="display:none;">
+                    <h3>Build Details</h3>
+                    <dl class="detail-list" id="build-detail-list"></dl>
+                    <div class="build-detail-output">
+                        <h4>Build Output</h4>
+                        <pre id="build-detail-output" class="logs-output">Select a build to view details.</pre>
+                    </div>
                 </div>
             </div>
 
@@ -469,6 +526,52 @@
                     <pre id="logs-output" class="logs-output">Select a function and click "Fetch Logs"</pre>
                 </div>
             </div>
+
+            <!-- Metrics View -->
+            <div id="metrics-view" class="view">
+                <div class="view-header">
+                    <h2>Metrics</h2>
+                    <div class="view-actions">
+                        <button class="btn btn-secondary" id="refresh-metrics-btn">Refresh</button>
+                    </div>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Gateway Requests</div>
+                        <div class="stat-value" id="metric-gateway-requests">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Gateway Errors</div>
+                        <div class="stat-value" id="metric-gateway-errors">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Function Invocations</div>
+                        <div class="stat-value" id="metric-function-invocations">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Functions Deployed</div>
+                        <div class="stat-value" id="metric-functions-deployed">-</div>
+                    </div>
+                </div>
+
+                <div class="detail-grid">
+                    <div class="detail-section">
+                        <h3>Health Checks</h3>
+                        <div class="status-list" id="health-check-list"></div>
+                        <div class="text-muted" id="health-check-updated"></div>
+                    </div>
+                    <div class="detail-section">
+                        <h3>Top Functions</h3>
+                        <div class="metrics-list" id="metrics-function-list"></div>
+                    </div>
+                </div>
+
+                <div class="detail-section">
+                    <h3>Raw Metrics</h3>
+                    <pre id="metrics-raw" class="logs-output">Metrics will appear here after refresh.</pre>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -493,6 +596,24 @@
             <div class="modal-footer">
                 <button class="btn btn-primary" id="save-secret-btn">Save Secret</button>
                 <button class="btn btn-secondary" id="cancel-secret-btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Function Import -->
+    <div id="import-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Import Functions</h3>
+                <button class="modal-close" id="close-import-modal">x</button>
+            </div>
+            <div class="modal-body">
+                <div id="import-summary" class="import-summary"></div>
+                <div id="import-error" class="error-message"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="import-confirm-btn">Import</button>
+                <button class="btn btn-secondary" id="import-cancel-btn">Cancel</button>
             </div>
         </div>
     </div>

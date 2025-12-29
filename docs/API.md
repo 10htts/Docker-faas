@@ -264,7 +264,7 @@ Alias for async invocation.
 
 ### GET /healthz
 
-Health check endpoint (no authentication required).
+Health check endpoint. When `AUTH_ENABLED=true`, this endpoint requires auth.
 
 Checks:
 - Docker connectivity
@@ -272,10 +272,17 @@ Checks:
 - Base network existence
 
 **Response:** `200 OK` with body "OK" when healthy, `503` when unhealthy.
+If `Accept: application/json` is provided, returns a JSON payload with check details.
 
 ### GET /metrics
 
 Prometheus metrics endpoint (port 9090, no authentication).
+
+**Response:** Prometheus format metrics
+
+### GET /system/metrics
+
+Prometheus metrics endpoint on the gateway port (authenticated).
 
 **Response:** Prometheus format metrics
 

@@ -18,6 +18,10 @@ class DockerFaaSApp {
         this.sourceLoaded = false;
         this.sourceRemovedPaths = new Set();
         this.sourceKey = '';
+        this.buildHistory = [];
+        this.buildHistoryLimit = 50;
+        this.importPlan = null;
+        this.currentBuildId = null;
         this.defaultGatewayUrl = this.getDefaultGatewayUrl();
         this.loadingCount = 0;
         this.sessionTimeoutMs = 30 * 60 * 1000;
@@ -32,6 +36,9 @@ class DockerFaaSApp {
         this.bindEvents();
         this.prefillGatewayUrl();
         this.checkSession();
+        this.loadBuildHistory();
+        this.resetLoadingState();
+        window.addEventListener('pageshow', () => this.resetLoadingState());
     }
 
     bindEvents() {
@@ -46,7 +53,7 @@ class DockerFaaSApp {
 
         // Navigation
         document.querySelectorAll('.nav-item').forEach(item => {
-            item.addEventListener('click', (e) => this.switchView(e.target.dataset.view));
+            item.addEventListener('click', (e) => this.switchView(e.currentTarget.dataset.view));
         });
 
         // Overview quick actions
@@ -54,6 +61,12 @@ class DockerFaaSApp {
         document.getElementById('deploy-source-btn')?.addEventListener('click', () => this.showCreateFunction('source'));
         document.getElementById('view-functions-btn')?.addEventListener('click', () => this.switchView('functions'));
         document.getElementById('manage-secrets-btn')?.addEventListener('click', () => this.switchView('secrets'));
+        document.getElementById('export-functions-btn')?.addEventListener('click', () => this.exportFunctions());
+        document.getElementById('import-functions-btn')?.addEventListener('click', () => this.triggerImport());
+        document.getElementById('import-functions-file')?.addEventListener('change', (e) => this.handleImportFile(e.target.files[0]));
+        document.getElementById('import-confirm-btn')?.addEventListener('click', () => this.confirmImport());
+        document.getElementById('import-cancel-btn')?.addEventListener('click', () => this.hideImportModal());
+        document.getElementById('close-import-modal')?.addEventListener('click', () => this.hideImportModal());
 
         // Functions
         document.getElementById('create-function-btn')?.addEventListener('click', () => this.showCreateFunction());
@@ -110,6 +123,10 @@ class DockerFaaSApp {
 
         // Refresh
         document.getElementById('refresh-btn')?.addEventListener('click', () => this.refreshCurrentView());
+
+        // Builds and metrics
+        document.getElementById('clear-build-history-btn')?.addEventListener('click', () => this.clearBuildHistory());
+        document.getElementById('refresh-metrics-btn')?.addEventListener('click', () => this.loadMetrics());
     }
 
     getDefaultGatewayUrl() {
@@ -211,6 +228,7 @@ class DockerFaaSApp {
         document.getElementById('login-screen').classList.add('active');
         this.stopAutoRefresh();
         this.clearSessionTimeout();
+        this.resetLoadingState();
     }
 
     // API Methods
@@ -237,10 +255,15 @@ class DockerFaaSApp {
         }
 
         try {
-            return await fetch(url, {
+            const response = await fetch(url, {
                 ...fetchOptions,
                 headers
             });
+            if (this.authenticated && (response.status === 401 || response.status === 403)) {
+                this.showToast('Session expired. Please log in again.', 'warning');
+                this.logout({ silent: true });
+            }
+            return response;
         } finally {
             if (shouldShowLoading) {
                 this.hideLoading();
@@ -272,11 +295,17 @@ class DockerFaaSApp {
             case 'functions':
                 this.loadFunctions();
                 break;
+            case 'builds':
+                this.loadBuildHistoryView();
+                break;
             case 'secrets':
                 this.loadSecrets();
                 break;
             case 'logs':
                 this.loadLogsView();
+                break;
+            case 'metrics':
+                this.loadMetrics();
                 break;
         }
     }
@@ -351,17 +380,80 @@ class DockerFaaSApp {
         }
     }
 
+    // Build History
+    loadBuildHistory() {
+        const stored = localStorage.getItem('dockerfaas-build-history');
+        if (!stored) {
+            this.buildHistory = [];
+            return;
+        }
+        try {
+            const parsed = JSON.parse(stored);
+            if (Array.isArray(parsed)) {
+                this.buildHistory = parsed;
+            } else {
+                this.buildHistory = [];
+            }
+        } catch (error) {
+            this.buildHistory = [];
+        }
+    }
+
+    saveBuildHistory() {
+        localStorage.setItem('dockerfaas-build-history', JSON.stringify(this.buildHistory));
+    }
+
+    addBuildHistory(entry) {
+        this.buildHistory.unshift(entry);
+        if (this.buildHistory.length > this.buildHistoryLimit) {
+            this.buildHistory = this.buildHistory.slice(0, this.buildHistoryLimit);
+        }
+        this.saveBuildHistory();
+        this.renderBuildsTable();
+    }
+
+    updateBuildHistory(id, updates) {
+        const index = this.buildHistory.findIndex((entry) => entry.id === id);
+        if (index === -1) {
+            return;
+        }
+        this.buildHistory[index] = { ...this.buildHistory[index], ...updates };
+        this.saveBuildHistory();
+        this.renderBuildsTable();
+        if (this.currentBuildId === id) {
+            this.renderBuildDetails(this.buildHistory[index]);
+        }
+    }
+
+    clearBuildHistory() {
+        if (!confirm('Clear build history?')) {
+            return;
+        }
+        this.buildHistory = [];
+        this.saveBuildHistory();
+        this.renderBuildsTable();
+        this.hideBuildDetails();
+    }
+
+    // Overview
     // Overview
     async loadOverview() {
         try {
-            // Load system info
             const infoResponse = await this.api('/system/info');
             if (infoResponse.ok) {
                 const info = await infoResponse.json();
                 const version = info.version?.release || info.version?.sha || info.provider?.version || 'v2.0';
                 document.getElementById('stat-version').textContent = version;
-                this.setHealthStatus('healthy', 'Healthy');
-            } else {
+            }
+
+            const health = await this.fetchHealthChecks();
+            if (health) {
+                if (health.status === 'ok') {
+                    this.setHealthStatus('healthy', 'Healthy');
+                } else {
+                    this.setHealthStatus('error', 'Unhealthy');
+                }
+            } else if (!infoResponse.ok) {
                 this.setHealthStatus('error', 'Error');
             }
 
@@ -1362,7 +1454,19 @@ class DockerFaaSApp {
             console.info('Source build request:', payload);
             this.updatePayloadPreview();
 
+            let buildEntry = null;
             try {
+                buildEntry = this.createBuildHistoryEntry(payload, {
+                    sourceType,
+                    runtime,
+                    gitUrl,
+                    gitRef,
+                    sourcePath,
+                    zipName: zipFile ? zipFile.name : '',
+                    manifest: manifestOverride
+                });
+                this.addBuildHistory(buildEntry);
+                const startedAt = performance.now();
                 let response;
                 if (sourceType === 'zip') {
                     const formData = new FormData();
@@ -1391,16 +1495,45 @@ class DockerFaaSApp {
                     });
                 }
 
+                const responseText = await response.text();
+                const durationMs = Math.round(performance.now() - startedAt);
                 if (response.ok) {
-                    const result = await response.json();
-                    const verb = result.updated ? 'updated' : 'deployed';
-                    this.showToast(`Build ${verb}: ${result.image}`, 'success');
+                    let result = null;
+                    try {
+                        result = JSON.parse(responseText);
+                    } catch (error) {
+                        result = null;
+                    }
+                    const verb = result && result.updated ? 'updated' : 'deployed';
+                    const imageName = result?.image || 'image';
+                    this.updateBuildHistory(buildEntry.id, {
+                        status: 'success',
+                        image: result?.image,
+                        deployed: result?.deployed,
+                        updated: result?.updated,
+                        finishedAt: new Date().toISOString(),
+                        durationMs,
+                        output: responseText
+                    });
+                    this.showToast(`Build ${verb}: ${imageName}`, 'success');
                     this.switchView('functions');
                 } else {
-                    const errorText = await response.text();
-                    this.showToast(`Build failed: ${errorText}`, 'error');
+                    this.updateBuildHistory(buildEntry.id, {
+                        status: 'failed',
+                        finishedAt: new Date().toISOString(),
+                        durationMs,
+                        error: responseText
+                    });
+                    this.showToast(`Build failed: ${responseText}`, 'error');
                 }
             } catch (error) {
+                if (buildEntry) {
+                    this.updateBuildHistory(buildEntry.id, {
+                        status: 'failed',
+                        finishedAt: new Date().toISOString(),
+                        error: error.message
+                    });
+                }
                 this.showToast(`Build error: ${error.message}`, 'error');
             }
             return;
@@ -1631,12 +1764,571 @@ class DockerFaaSApp {
         }
     }
 
+    // Build Activity
+    loadBuildHistoryView() {
+        this.renderBuildsTable();
+        if (this.currentBuildId) {
+            const entry = this.buildHistory.find((item) => item.id === this.currentBuildId);
+            if (entry) {
+                this.renderBuildDetails(entry);
+            } else {
+                this.hideBuildDetails();
+            }
+            return;
+        }
+        this.hideBuildDetails();
+    }
+
+    renderBuildsTable() {
+        const tbody = document.getElementById('builds-tbody');
+        if (!tbody) {
+            return;
+        }
+
+        if (this.buildHistory.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No builds recorded</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = this.buildHistory.map((entry) => {
+            const statusBadge = this.formatBuildStatus(entry.status);
+            const startedAt = this.formatDate(entry.startedAt);
+            const duration = entry.durationMs ? `${(entry.durationMs / 1000).toFixed(1)}s` : '-';
+            const sourceLabel = entry.sourceType ? entry.sourceType : '-';
+            const image = entry.image || '-';
+            return `
+                <tr>
+                    <td>${startedAt || '-'}</td>
+                    <td><strong>${entry.name || '-'}</strong></td>
+                    <td><code>${sourceLabel}</code></td>
+                    <td>${statusBadge}</td>
+                    <td><code>${image}</code></td>
+                    <td>${duration}</td>
+                    <td>
+                        <button class="btn btn-secondary btn-sm" onclick="app.showBuildDetails('${entry.id}')">View</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    showBuildDetails(id) {
+        const entry = this.buildHistory.find((item) => item.id === id);
+        if (!entry) {
+            return;
+        }
+        this.currentBuildId = id;
+        this.renderBuildDetails(entry);
+        const panel = document.getElementById('build-detail-panel');
+        if (panel) {
+            panel.style.display = 'block';
+        }
+    }
+
+    hideBuildDetails() {
+        this.currentBuildId = null;
+        const panel = document.getElementById('build-detail-panel');
+        if (panel) {
+            panel.style.display = 'none';
+        }
+    }
+
+    renderBuildDetails(entry) {
+        const list = document.getElementById('build-detail-list');
+        const output = document.getElementById('build-detail-output');
+        if (!list || !output) {
+            return;
+        }
+
+        const items = [
+            ['Status', entry.status || '-'],
+            ['Function', entry.name || '-'],
+            ['Source', entry.sourceType || '-'],
+            ['Runtime', entry.runtime || '-'],
+            ['Git URL', entry.gitUrl || '-'],
+            ['Git Ref', entry.gitRef || '-'],
+            ['Subdirectory', entry.sourcePath || '-'],
+            ['Zip File', entry.zipName || '-'],
+            ['Image', entry.image || '-'],
+            ['Deployed', this.formatBool(entry.deployed)],
+            ['Updated', this.formatBool(entry.updated)],
+            ['Started', entry.startedAt ? this.formatDate(entry.startedAt) : '-'],
+            ['Finished', entry.finishedAt ? this.formatDate(entry.finishedAt) : '-'],
+            ['Duration', entry.durationMs ? `${(entry.durationMs / 1000).toFixed(1)}s` : '-']
+        ];
+
+        list.innerHTML = items.map(([label, value]) => `
+            <dt>${label}</dt>
+            <dd>${value}</dd>
+        `).join('');
+
+        const outputLines = [];
+        if (entry.output) {
+            outputLines.push(entry.output);
+        }
+        if (entry.error) {
+            outputLines.push(`Error: ${entry.error}`);
+        }
+        if (entry.manifest) {
+            outputLines.push('--- docker-faas.yaml ---');
+            outputLines.push(entry.manifest);
+        }
+        if (entry.fileChanges && entry.fileChanges.length > 0) {
+            outputLines.push('--- File Changes ---');
+            outputLines.push(entry.fileChanges.join('\n'));
+        }
+        output.textContent = outputLines.length > 0 ? outputLines.join('\n') : 'No build output available.';
+    }
+
+    formatBuildStatus(status) {
+        switch (status) {
+            case 'success':
+                return '<span class="badge badge-success">Success</span>';
+            case 'failed':
+                return '<span class="badge badge-danger">Failed</span>';
+            case 'running':
+                return '<span class="badge badge-warning">Running</span>';
+            default:
+                return '<span class="badge badge-info">Pending</span>';
+        }
+    }
+
+    createBuildHistoryEntry(payload, options) {
+        const timestamp = new Date().toISOString();
+        const fileChanges = Array.isArray(payload?.source?.files)
+            ? payload.source.files.map((file) => file.remove ? `${file.path} (remove)` : file.path)
+            : [];
+        return {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            name: payload?.name || '',
+            sourceType: options.sourceType || payload?.source?.type || '',
+            runtime: options.runtime || payload?.source?.runtime || '',
+            gitUrl: options.gitUrl || payload?.source?.git?.url || '',
+            gitRef: options.gitRef || payload?.source?.git?.ref || '',
+            sourcePath: options.sourcePath || payload?.source?.git?.path || '',
+            zipName: options.zipName || payload?.source?.zip?.filename || '',
+            manifest: options.manifest || payload?.source?.manifest || '',
+            fileChanges,
+            status: 'running',
+            startedAt: timestamp
+        };
+    }
+
+    // Backup and Import
+    async exportFunctions() {
+        try {
+            const functions = await this.fetchFunctions();
+            const exportData = {
+                version: '1',
+                exportedAt: new Date().toISOString(),
+                gateway: this.gatewayUrl,
+                functions: functions.map((fn) => ({
+                    name: fn.name,
+                    image: fn.image,
+                    network: fn.network || '',
+                    envProcess: fn.envProcess || '',
+                    envVars: fn.envVars || {},
+                    labels: fn.labels || {},
+                    secrets: fn.secrets || [],
+                    limits: fn.limits || null,
+                    requests: fn.requests || null,
+                    readOnlyRootFilesystem: !!fn.readOnlyRootFilesystem,
+                    debug: !!fn.debug
+                }))
+            };
+
+            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `docker-faas-backup-${Date.now()}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            this.showToast('Export ready', 'success');
+        } catch (error) {
+            this.showToast(`Export failed: ${error.message}`, 'error');
+        }
+    }
+
+    triggerImport() {
+        const input = document.getElementById('import-functions-file');
+        if (!input) {
+            return;
+        }
+        input.value = '';
+        input.click();
+    }
+
+    async handleImportFile(file) {
+        if (!file) {
+            return;
+        }
+        try {
+            const text = await file.text();
+            const data = JSON.parse(text);
+            const plan = this.buildImportPlan(data);
+            if (plan.functions.length === 0) {
+                this.showToast('No functions found in import file', 'warning');
+                return;
+            }
+            this.importPlan = plan;
+            await this.renderImportSummary(plan);
+            this.showImportModal();
+        } catch (error) {
+            this.showToast(`Import failed: ${error.message}`, 'error');
+        }
+    }
+
+    buildImportPlan(data) {
+        if (!data || !Array.isArray(data.functions)) {
+            throw new Error('Invalid import file format');
+        }
+        const functions = data.functions.map((fn) => {
+            const name = (fn.service || fn.name || '').trim();
+            return {
+                name,
+                image: fn.image || '',
+                network: fn.network || '',
+                envProcess: fn.envProcess || '',
+                envVars: fn.envVars || {},
+                labels: fn.labels || {},
+                secrets: Array.isArray(fn.secrets) ? fn.secrets : [],
+                limits: fn.limits || null,
+                requests: fn.requests || null,
+                readOnlyRootFilesystem: !!fn.readOnlyRootFilesystem,
+                debug: !!fn.debug
+            };
+        }).filter((fn) => fn.name);
+
+        return {
+            version: data.version || '1',
+            functions
+        };
+    }
+
+    async renderImportSummary(plan) {
+        const summary = document.getElementById('import-summary');
+        const errorDiv = document.getElementById('import-error');
+        if (!summary || !errorDiv) {
+            return;
+        }
+        errorDiv.textContent = '';
+        errorDiv.classList.remove('show');
+
+        const secrets = await this.fetchSecretNames();
+        const missingSecrets = new Set();
+
+        const listItems = plan.functions.map((fn) => {
+            const missing = fn.secrets.filter((secret) => !secrets.includes(secret));
+            missing.forEach((secret) => missingSecrets.add(secret));
+            const detailParts = [];
+            if (fn.image) {
+                detailParts.push(fn.image);
+            }
+            if (fn.secrets.length > 0) {
+                detailParts.push(`secrets: ${fn.secrets.join(', ')}`);
+            }
+            if (missing.length > 0) {
+                detailParts.push(`missing secrets: ${missing.join(', ')}`);
+            }
+            const details = detailParts.length > 0 ? ` (${detailParts.join(' | ')})` : '';
+            return `<li><strong>${fn.name}</strong>${details}</li>`;
+        });
+
+        const warning = missingSecrets.size > 0
+            ? `Missing secrets: ${Array.from(missingSecrets).join(', ')}`
+            : '';
+
+        summary.innerHTML = `
+            <div><strong>${plan.functions.length}</strong> functions ready to import.</div>
+            ${warning ? `<div class="text-muted">${warning}</div>` : ''}
+            <ul>${listItems.join('')}</ul>
+        `;
+    }
+
+    showImportModal() {
+        const modal = document.getElementById('import-modal');
+        if (modal) {
+            modal.classList.add('active');
+        }
+    }
+
+    hideImportModal() {
+        const modal = document.getElementById('import-modal');
+        if (modal) {
+            modal.classList.remove('active');
+        }
+        this.importPlan = null;
+    }
+
+    async confirmImport() {
+        if (!this.importPlan) {
+            return;
+        }
+
+        const results = { success: [], failed: [] };
+        const existing = new Set((await this.fetchFunctions()).map((fn) => fn.name));
+
+        this.showLoading();
+        try {
+            for (const fn of this.importPlan.functions) {
+                const payload = {
+                    service: fn.name,
+                    image: fn.image,
+                    envProcess: fn.envProcess || undefined,
+                    envVars: fn.envVars,
+                    labels: fn.labels,
+                    secrets: fn.secrets,
+                    limits: fn.limits || undefined,
+                    requests: fn.requests || undefined,
+                    readOnlyRootFilesystem: fn.readOnlyRootFilesystem,
+                    debug: fn.debug
+                };
+                if (fn.network) {
+                    payload.network = fn.network;
+                }
+
+                const method = existing.has(fn.name) ? 'PUT' : 'POST';
+                const response = await this.api('/system/functions', {
+                    method,
+                    body: JSON.stringify(payload),
+                    showLoading: false
+                });
+
+                if (response.ok) {
+                    results.success.push(fn.name);
+                } else {
+                    const errorText = await response.text();
+                    results.failed.push({ name: fn.name, error: errorText });
+                }
+            }
+        } catch (error) {
+            this.showToast(`Import error: ${error.message}`, 'error');
+        } finally {
+            this.hideLoading();
+        }
+
+        const summary = document.getElementById('import-summary');
+        if (summary) {
+            const failures = results.failed.map((item) => `<li>${item.name}: ${item.error}</li>`).join('');
+            summary.innerHTML = `
+                <div><strong>${results.success.length}</strong> functions imported.</div>
+                ${results.failed.length > 0 ? `<div class="text-muted">Failures: ${results.failed.length}</div><ul>${failures}</ul>` : ''}
+            `;
+        }
+
+        if (results.success.length > 0) {
+            this.loadFunctions();
+        }
+        if (results.failed.length === 0) {
+            this.showToast('Import completed', 'success');
+        } else {
+            this.showToast('Import completed with errors', 'warning');
+        }
+    }
+
+    async fetchSecretNames() {
+        try {
+            const response = await this.api('/system/secrets', { showLoading: false });
+            if (!response.ok) {
+                return [];
+            }
+            const secrets = await response.json();
+            return secrets.map((secret) => secret.name);
+        } catch (error) {
+            return [];
+        }
+    }
+
+    // Metrics
+    async loadMetrics() {
+        const rawTarget = document.getElementById('metrics-raw');
+        try {
+            const response = await this.api('/system/metrics', {
+                headers: { Accept: 'text/plain' },
+                showLoading: true,
+                raw: true
+            });
+            if (!response.ok) {
+                const errorText = await response.text();
+                if (rawTarget) {
+                    rawTarget.textContent = `Failed to load metrics: ${errorText}`;
+                }
+                this.showToast('Failed to load metrics', 'error');
+                return;
+            }
+            const raw = await response.text();
+            if (rawTarget) {
+                rawTarget.textContent = raw.trim() || 'No metrics returned.';
+            }
+
+            const parsed = this.parsePrometheusMetrics(raw);
+            this.renderMetrics(parsed);
+            const health = await this.fetchHealthChecks();
+            if (health) {
+                this.renderHealthChecks(health);
+            }
+        } catch (error) {
+            if (rawTarget) {
+                rawTarget.textContent = `Failed to load metrics: ${error.message}`;
+            }
+            this.showToast(`Metrics error: ${error.message}`, 'error');
+        }
+    }
+
+    parsePrometheusMetrics(text) {
+        const samples = [];
+        const lines = text.split('\n');
+        const lineRegex = /^([a-zA-Z_:][a-zA-Z0-9_:]*)(\{[^}]*\})?\s+([-0-9.eE+]+)$/;
+        const labelRegex = /([a-zA-Z_][a-zA-Z0-9_]*)="([^"]*)"/g;
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#')) {
+                continue;
+            }
+            const match = trimmed.match(lineRegex);
+            if (!match) {
+                continue;
+            }
+            const name = match[1];
+            const labelPart = match[2];
+            const value = parseFloat(match[3]);
+            if (Number.isNaN(value)) {
+                continue;
+            }
+            const labels = {};
+            if (labelPart) {
+                let labelMatch;
+                while ((labelMatch = labelRegex.exec(labelPart)) !== null) {
+                    labels[labelMatch[1]] = labelMatch[2];
+                }
+            }
+            samples.push({ name, labels, value });
+        }
+
+        const byName = {};
+        samples.forEach((sample) => {
+            if (!byName[sample.name]) {
+                byName[sample.name] = [];
+            }
+            byName[sample.name].push(sample);
+        });
+
+        return { samples, byName };
+    }
+
+    renderMetrics(parsed) {
+        const totalRequests = this.sumMetric(parsed, 'gateway_http_requests_total');
+        const totalErrors = this.sumMetric(parsed, 'gateway_http_errors_total');
+        const totalInvocations = this.sumMetric(parsed, 'function_invocations_total');
+        const functionsDeployed = this.firstMetric(parsed, 'functions_deployed');
+
+        document.getElementById('metric-gateway-requests').textContent = this.formatNumber(totalRequests);
+        document.getElementById('metric-gateway-errors').textContent = this.formatNumber(totalErrors);
+        document.getElementById('metric-function-invocations').textContent = this.formatNumber(totalInvocations);
+        document.getElementById('metric-functions-deployed').textContent = this.formatNumber(functionsDeployed);
+
+        const functionTotals = {};
+        const errorTotals = {};
+        (parsed.byName['function_invocations_total'] || []).forEach((sample) => {
+            const name = sample.labels.function_name || 'unknown';
+            functionTotals[name] = (functionTotals[name] || 0) + sample.value;
+        });
+        (parsed.byName['function_errors_total'] || []).forEach((sample) => {
+            const name = sample.labels.function_name || 'unknown';
+            errorTotals[name] = (errorTotals[name] || 0) + sample.value;
+        });
+
+        const top = Object.keys(functionTotals)
+            .map((name) => ({
+                name,
+                invocations: functionTotals[name],
+                errors: errorTotals[name] || 0
+            }))
+            .sort((a, b) => b.invocations - a.invocations)
+            .slice(0, 5);
+
+        const list = document.getElementById('metrics-function-list');
+        if (list) {
+            if (top.length === 0) {
+                list.innerHTML = '<div class="text-muted">No function metrics yet.</div>';
+            } else {
+                list.innerHTML = top.map((item) => `
+                    <div class="metrics-row">
+                        <strong>${item.name}</strong>
+                        <span>${this.formatNumber(item.invocations)} invocations / ${this.formatNumber(item.errors)} errors</span>
+                    </div>
+                `).join('');
+            }
+        }
+    }
+
+    sumMetric(parsed, name) {
+        const samples = parsed.byName[name] || [];
+        return samples.reduce((sum, sample) => sum + sample.value, 0);
+    }
+
+    firstMetric(parsed, name) {
+        const samples = parsed.byName[name] || [];
+        if (samples.length === 0) {
+            return 0;
+        }
+        return samples[0].value;
+    }
+
+    async fetchHealthChecks() {
+        try {
+            const response = await this.api('/healthz', {
+                headers: { Accept: 'application/json' },
+                showLoading: false
+            });
+            if (!response.ok) {
+                return null;
+            }
+            return await response.json();
+        } catch (error) {
+            return null;
+        }
+    }
+
+    renderHealthChecks(health) {
+        const list = document.getElementById('health-check-list');
+        const updated = document.getElementById('health-check-updated');
+        if (!list || !health || !health.checks) {
+            return;
+        }
+        const items = Object.entries(health.checks).map(([name, status]) => {
+            const ok = status === 'ok';
+            return `
+                <div class="status-item ${ok ? 'ok' : 'error'}">
+                    <span>${name}</span>
+                    <span>${ok ? 'ok' : status}</span>
+                </div>
+            `;
+        });
+        list.innerHTML = items.join('');
+        if (updated) {
+            updated.textContent = `Last updated: ${new Date().toLocaleString()}`;
+        }
+    }
+
     // UI Helpers
     showLoading() {
         this.loadingCount += 1;
         const overlay = document.getElementById('loading-overlay');
         if (overlay) {
             overlay.classList.add('active');
+        }
+    }
+
+    resetLoadingState() {
+        this.loadingCount = 0;
+        const overlay = document.getElementById('loading-overlay');
+        if (overlay) {
+            overlay.classList.remove('active');
         }
     }
 
@@ -1670,6 +2362,16 @@ class DockerFaaSApp {
         return date.toLocaleString();
     }
 
+    formatNumber(value) {
+        if (value === null || value === undefined) {
+            return '-';
+        }
+        if (!Number.isFinite(value)) {
+            return '-';
+        }
+        return new Intl.NumberFormat().format(value);
+    }
+
     formatKeyList(map) {
         if (!map || Object.keys(map).length === 0) {
             return '';
@@ -1689,6 +2391,13 @@ class DockerFaaSApp {
             parts.push(`CPU: ${resources.cpu}`);
         }
         return parts.join(' | ');
+    }
+
+    formatBool(value) {
+        if (value === undefined || value === null) {
+            return '-';
+        }
+        return value ? 'Yes' : 'No';
     }
 
     isReplicaHealthy(status) {

@@ -47,3 +47,8 @@ temp/
 
 # Example source bundles
 examples/**/*.zip
+
+# UI test tooling
+tests/ui/node_modules/
+tests/ui/playwright-report/
+tests/ui/test-results/

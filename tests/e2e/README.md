@@ -203,6 +203,7 @@ These scripts cover production readiness scenarios.
 - `test-network-isolation.sh` - per-function network isolation and gateway attachment
 - `test-debug-mode.sh` - debug port binding and mapping
 - `test-faas-cli-workflow.sh` - faas-cli login, deploy, invoke, scale, remove
+- `test-metrics.sh` - metrics endpoint availability and core counters
 - `test-upgrade.sh` - database migration upgrade path (requires sqlite3 and gateway image)
 
 ### Running the Tests

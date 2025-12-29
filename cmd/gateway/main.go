@@ -77,6 +77,7 @@ func main() {
 	r.HandleFunc("/system/scale-function/{name}", gw.HandleScaleFunction).Methods("POST")
 	r.HandleFunc("/system/logs", gw.HandleGetLogs).Methods("GET")
 	r.HandleFunc("/system/function-async/{name}", gw.HandleInvokeFunctionAsync).Methods("POST", "GET", "PUT", "DELETE", "PATCH")
+	r.Handle("/system/metrics", promhttp.Handler()).Methods("GET")
 
 	// Secret management endpoints
 	r.HandleFunc("/system/secrets", gw.HandleCreateSecret).Methods("POST")

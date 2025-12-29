@@ -3,6 +3,7 @@ param(
   [switch]$SkipCompatibility,
   [switch]$SkipFaasCli,
   [switch]$SkipUpgrade,
+  [switch]$SkipUiE2E,
   [string]$Gateway = "http://localhost:8080",
   [string]$AuthUser,
   [string]$AuthPassword
@@ -62,6 +63,7 @@ $tests = @(
   "test-network-isolation.sh",
   "test-debug-mode.sh",
   "test-secrets.sh",
+  "test-metrics.sh",
   "test-upgrade.sh",
   "openfaas-compatibility-test.sh",
   "test-faas-cli-workflow.sh"
@@ -91,6 +93,29 @@ foreach ($test in $tests) {
   Write-Host "Running $test..." -ForegroundColor Cyan
   & $bash -lc "$pathPrefix ./tests/e2e/$test"
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+
+if (-not $SkipUiE2E) {
+  $node = Get-Command node -ErrorAction SilentlyContinue
+  if ($node -and (Test-Path "tests/ui/package.json")) {
+    Write-Host "Running UI E2E tests..." -ForegroundColor Cyan
+    $env:GATEWAY_URL = $Gateway
+    Push-Location "tests/ui"
+    try {
+      if (-not (Test-Path "node_modules")) {
+        & npm install
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      }
+      & npx playwright install
+      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      & npx playwright test
+      if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    } finally {
+      Pop-Location
+    }
+  } else {
+    Write-Warning "node or tests/ui/package.json not found; skipping UI E2E tests."
+  }
 }
 
 Write-Host "All requested tests completed." -ForegroundColor Green
