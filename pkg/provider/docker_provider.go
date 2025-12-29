@@ -146,6 +146,27 @@ func (p *DockerProvider) ensureNetwork(ctx context.Context, networkName string, 
 	return nil
 }
 
+// HealthCheck validates Docker connectivity.
+func (p *DockerProvider) HealthCheck(ctx context.Context) error {
+	_, err := p.client.Ping(ctx)
+	return err
+}
+
+// CheckNetwork validates that the base function network exists.
+func (p *DockerProvider) CheckNetwork(ctx context.Context) error {
+	if p.network == "" {
+		return fmt.Errorf("functions network is not configured")
+	}
+	_, err := p.client.NetworkInspect(ctx, p.network, network.InspectOptions{})
+	if err != nil {
+		if isNetworkNotFoundErr(err) {
+			return fmt.Errorf("functions network %s not found", p.network)
+		}
+		return err
+	}
+	return nil
+}
+
 // DeployFunction deploys a function with specified replicas
 func (p *DockerProvider) DeployFunction(ctx context.Context, deployment *faasTypes.FunctionDeployment, replicas int) error {
 	p.logger.Infof("Deploying function: %s with %d replicas", deployment.Service, replicas)

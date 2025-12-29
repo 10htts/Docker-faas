@@ -97,6 +97,10 @@ func (g *Gateway) HandleBuildFunction(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "name is required (request or docker-faas.yaml)", http.StatusBadRequest)
 		return
 	}
+	if err := validateFunctionName(name); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	imageName := buildImageTag(name)
 	if err := builder.BuildImage(r.Context(), g.provider.DockerClient(), contextDir, dockerfile, imageName, g.logger); err != nil {
@@ -291,6 +295,9 @@ func (g *Gateway) prepareBuildContext(ctx context.Context, tempDir string, req *
 		if source.Git == nil || source.Git.URL == "" {
 			return nil, "", "", fmt.Errorf("git source requires url")
 		}
+		if err := validateGitURL(source.Git.URL); err != nil {
+			return nil, "", "", err
+		}
 		if err := cloneRepo(ctx, source.Git, tempDir); err != nil {
 			return nil, "", "", err
 		}
@@ -302,7 +309,11 @@ func (g *Gateway) prepareBuildContext(ctx context.Context, tempDir string, req *
 
 	contextDir := tempDir
 	if source.Git != nil && source.Git.Path != "" {
-		contextDir = filepath.Join(tempDir, filepath.Clean(source.Git.Path))
+		joined, err := safeJoin(tempDir, source.Git.Path)
+		if err != nil {
+			return nil, "", "", err
+		}
+		contextDir = joined
 	}
 
 	if err := ensureDir(contextDir); err != nil {
@@ -428,19 +439,38 @@ func (g *Gateway) deployBuiltImage(ctx context.Context, name, image string, mani
 
 		existing.Image = deployment.Image
 		existing.EnvProcess = deployment.EnvProcess
-		existing.EnvVars = store.EncodeMap(deployment.EnvVars)
-		existing.Labels = store.EncodeMap(deployment.Labels)
-		existing.Secrets = store.EncodeSlice(deployment.Secrets)
+		envVars, err := store.EncodeMap(deployment.EnvVars)
+		if err != nil {
+			return true, fmt.Errorf("failed to encode envVars: %w", err)
+		}
+		labels, err := store.EncodeMap(deployment.Labels)
+		if err != nil {
+			return true, fmt.Errorf("failed to encode labels: %w", err)
+		}
+		secretsJSON, err := store.EncodeSlice(deployment.Secrets)
+		if err != nil {
+			return true, fmt.Errorf("failed to encode secrets: %w", err)
+		}
+
+		existing.EnvVars = envVars
+		existing.Labels = labels
+		existing.Secrets = secretsJSON
 		existing.Network = deployment.Network
 		existing.ReadOnly = deployment.ReadOnlyRootFilesystem
 		existing.Debug = deployment.Debug
 
 		if deployment.Limits != nil {
-			limitsJSON, _ := json.Marshal(deployment.Limits)
+			limitsJSON, err := json.Marshal(deployment.Limits)
+			if err != nil {
+				return true, fmt.Errorf("failed to encode limits: %w", err)
+			}
 			existing.Limits = string(limitsJSON)
 		}
 		if deployment.Requests != nil {
-			requestsJSON, _ := json.Marshal(deployment.Requests)
+			requestsJSON, err := json.Marshal(deployment.Requests)
+			if err != nil {
+				return true, fmt.Errorf("failed to encode requests: %w", err)
+			}
 			existing.Requests = string(requestsJSON)
 		}
 
@@ -457,13 +487,26 @@ func (g *Gateway) deployBuiltImage(ctx context.Context, name, image string, mani
 		return false, err
 	}
 
+	envVars, err := store.EncodeMap(deployment.EnvVars)
+	if err != nil {
+		return false, fmt.Errorf("failed to encode envVars: %w", err)
+	}
+	labels, err := store.EncodeMap(deployment.Labels)
+	if err != nil {
+		return false, fmt.Errorf("failed to encode labels: %w", err)
+	}
+	secretsJSON, err := store.EncodeSlice(deployment.Secrets)
+	if err != nil {
+		return false, fmt.Errorf("failed to encode secrets: %w", err)
+	}
+
 	metadata := &types.FunctionMetadata{
 		Name:       deployment.Service,
 		Image:      deployment.Image,
 		EnvProcess: deployment.EnvProcess,
-		EnvVars:    store.EncodeMap(deployment.EnvVars),
-		Labels:     store.EncodeMap(deployment.Labels),
-		Secrets:    store.EncodeSlice(deployment.Secrets),
+		EnvVars:    envVars,
+		Labels:     labels,
+		Secrets:    secretsJSON,
 		Network:    deployment.Network,
 		Replicas:   replicas,
 		ReadOnly:   deployment.ReadOnlyRootFilesystem,
@@ -471,11 +514,17 @@ func (g *Gateway) deployBuiltImage(ctx context.Context, name, image string, mani
 	}
 
 	if deployment.Limits != nil {
-		limitsJSON, _ := json.Marshal(deployment.Limits)
+		limitsJSON, err := json.Marshal(deployment.Limits)
+		if err != nil {
+			return false, fmt.Errorf("failed to encode limits: %w", err)
+		}
 		metadata.Limits = string(limitsJSON)
 	}
 	if deployment.Requests != nil {
-		requestsJSON, _ := json.Marshal(deployment.Requests)
+		requestsJSON, err := json.Marshal(deployment.Requests)
+		if err != nil {
+			return false, fmt.Errorf("failed to encode requests: %w", err)
+		}
 		metadata.Requests = string(requestsJSON)
 	}
 
@@ -498,6 +547,13 @@ func buildImageTag(name string) string {
 	return fmt.Sprintf("docker-faas/%s:%d", safe, time.Now().Unix())
 }
 
+const (
+	maxZipEntries          = 2000
+	maxZipFileBytes        = 100 << 20
+	maxZipTotalBytes       = 500 << 20
+	maxZipCompressionRatio = 100
+)
+
 func extractZip(zipPath, dest string) error {
 	reader, err := zip.OpenReader(zipPath)
 	if err != nil {
@@ -505,8 +561,13 @@ func extractZip(zipPath, dest string) error {
 	}
 	defer reader.Close()
 
+	if err := validateZipArchive(reader.File); err != nil {
+		return err
+	}
+
+	var extractedTotal uint64
 	for _, file := range reader.File {
-		if err := extractZipFile(file, dest); err != nil {
+		if err := extractZipFile(file, dest, &extractedTotal); err != nil {
 			return err
 		}
 	}
@@ -514,7 +575,40 @@ func extractZip(zipPath, dest string) error {
 	return nil
 }
 
-func extractZipFile(file *zip.File, dest string) error {
+func validateZipArchive(files []*zip.File) error {
+	if len(files) > maxZipEntries {
+		return fmt.Errorf("zip contains too many entries (max %d)", maxZipEntries)
+	}
+
+	var total uint64
+	for _, file := range files {
+		if file.Name == "" {
+			return fmt.Errorf("zip entry has empty name")
+		}
+		if strings.Contains(file.Name, "\x00") || strings.Contains(file.Name, ":") {
+			return fmt.Errorf("zip entry has invalid name: %s", file.Name)
+		}
+		if file.FileInfo().Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("zip entry uses symlink: %s", file.Name)
+		}
+		if !file.FileInfo().IsDir() && file.UncompressedSize64 > maxZipFileBytes {
+			return fmt.Errorf("zip entry too large: %s", file.Name)
+		}
+		if file.CompressedSize64 > 0 && file.UncompressedSize64 > 1<<20 {
+			ratio := file.UncompressedSize64 / file.CompressedSize64
+			if ratio > maxZipCompressionRatio {
+				return fmt.Errorf("zip entry compression ratio too high: %s", file.Name)
+			}
+		}
+		total += file.UncompressedSize64
+		if total > maxZipTotalBytes {
+			return fmt.Errorf("zip uncompressed size exceeds %d bytes", maxZipTotalBytes)
+		}
+	}
+	return nil
+}
+
+func extractZipFile(file *zip.File, dest string, extractedTotal *uint64) error {
 	path, err := safeJoin(dest, file.Name)
 	if err != nil {
 		return err
@@ -540,8 +634,22 @@ func extractZipFile(file *zip.File, dest string) error {
 	}
 	defer out.Close()
 
-	if _, err := io.Copy(out, rc); err != nil {
+	limit := int64(maxZipFileBytes + 1)
+	written, err := io.Copy(out, io.LimitReader(rc, limit))
+	if err != nil {
+		_ = os.Remove(path)
 		return err
+	}
+	if written > int64(maxZipFileBytes) {
+		_ = os.Remove(path)
+		return fmt.Errorf("zip entry too large: %s", file.Name)
+	}
+	if extractedTotal != nil {
+		*extractedTotal += uint64(written)
+		if *extractedTotal > maxZipTotalBytes {
+			_ = os.Remove(path)
+			return fmt.Errorf("zip uncompressed size exceeds %d bytes", maxZipTotalBytes)
+		}
 	}
 
 	return nil
@@ -573,6 +681,10 @@ func writeInlineFiles(base string, files []buildInlineFile) error {
 }
 
 func safeJoin(base, target string) (string, error) {
+	target = strings.ReplaceAll(target, "\\", "/")
+	if strings.Contains(target, ":") {
+		return "", fmt.Errorf("invalid path: %s", target)
+	}
 	clean := filepath.Clean(target)
 	if filepath.IsAbs(clean) || strings.HasPrefix(clean, "..") {
 		return "", fmt.Errorf("invalid path: %s", target)

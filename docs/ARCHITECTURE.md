@@ -158,21 +158,21 @@ Centralized configuration management.
 
 ```
 Client Request
-    ↓
+    v
 Gateway (HandleDeployFunction)
-    ↓
+    v
 Validate Request
-    ↓
+    v
 Provider (DeployFunction)
-    ↓
-Pull Image → Create Containers → Start Containers
-    ↓
+    v
+Pull Image -> Create Containers -> Start Containers
+    v
 Store (CreateFunction)
-    ↓
+    v
 Persist Metadata
-    ↓
+    v
 Update Metrics
-    ↓
+    v
 Response to Client
 ```
 
@@ -180,21 +180,21 @@ Response to Client
 
 ```
 Client Request
-    ↓
+    v
 Gateway (HandleInvokeFunction)
-    ↓
+    v
 Router (RouteRequest)
-    ↓
+    v
 Select Container (Round-Robin)
-    ↓
+    v
 Forward Request to Container
-    ↓
-Container (of-watchdog → function)
-    ↓
+    v
+Container (of-watchdog -> function)
+    v
 Stream Response Back
-    ↓
+    v
 Record Metrics
-    ↓
+    v
 Response to Client
 ```
 
@@ -202,49 +202,49 @@ Response to Client
 
 ```
 Client Request
-    ↓
+    v
 Gateway (HandleScaleFunction)
-    ↓
+    v
 Validate Request
-    ↓
+    v
 Store (GetFunction)
-    ↓
+    v
 Provider (ScaleFunction)
-    ↓
+    v
 Create/Remove Containers
-    ↓
+    v
 Store (UpdateReplicas)
-    ↓
+    v
 Update Metrics
-    ↓
+    v
 Response to Client
 ```
 
 ## Network Architecture
 
 ```
-┌─────────────────────────────────────┐
-│         Host Network                │
-│                                     │
-│  ┌──────────────────────────────┐  │
-│  │   Docker FaaS Gateway        │  │
-│  │   - Port 8080 (API)          │  │
-│  │   - Port 9090 (Metrics)      │  │
-│  └──────────┬───────────────────┘  │
-│             │                       │
-└─────────────┼───────────────────────┘
-              │
-    ┌─────────▼──────────┐
-    │  docker-faas-net   │
-    │  (Bridge Network)  │
-    └─────────┬──────────┘
-              │
-    ┌─────────┴──────────────────────┐
-    │                                │
-┌───▼────┐  ┌────────┐  ┌────────┐
-│Func-1-0│  │Func-1-1│  │Func-2-0│
-│:8080   │  │:8080   │  │:8080   │
-└────────┘  └────────┘  └────────┘
++-------------------------------------+
+|         Host Network                |
+|                                     |
+|  +------------------------------+  |
+|  |   Docker FaaS Gateway        |  |
+|  |   - Port 8080 (API)          |  |
+|  |   - Port 9090 (Metrics)      |  |
+|  +----------+-------------------+  |
+|             |                       |
++-------------+-----------------------+
+              |
+    +---------v----------+
+    |  docker-faas-net   |
+    |  (Bridge Network)  |
+    +---------+----------+
+              |
+    +---------+----------------------+
+    |                                |
++---v----+  +--------+  +--------+
+|Func-1-0|  |Func-1-1|  |Func-2-0|
+|:8080   |  |:8080   |  |:8080   |
++--------+  +--------+  +--------+
 ```
 
 **Network Details:**
@@ -260,16 +260,16 @@ Response to Client
 
 ```
 Request
-    ↓
+    v
 Auth Middleware
-    ↓
+    v
 Extract Basic Auth Header
-    ↓
+    v
 Constant-Time Compare
-    ↓
-[Valid] → Next Handler
-    ↓
-[Invalid] → 401 Unauthorized
+    v
+[Valid] -> Next Handler
+    v
+[Invalid] -> 401 Unauthorized
 ```
 
 ### Container Isolation
@@ -313,11 +313,11 @@ Constant-Time Compare
 ## Error Handling
 
 ### Gateway Errors
-- Validation errors → 400 Bad Request
-- Authentication errors → 401 Unauthorized
-- Not found → 404 Not Found
-- Conflicts → 409 Conflict
-- Internal errors → 500 Internal Server Error
+- Validation errors -> 400 Bad Request
+- Authentication errors -> 401 Unauthorized
+- Not found -> 404 Not Found
+- Conflicts -> 409 Conflict
+- Internal errors -> 500 Internal Server Error
 
 ### Provider Errors
 - Image pull failures

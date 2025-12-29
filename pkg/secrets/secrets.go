@@ -3,7 +3,6 @@ package secrets
 import (
 	"encoding/base64"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,7 +61,7 @@ func (sm *SecretManager) CreateSecret(name, value string) error {
 	}
 
 	// Write secret with restricted permissions (owner read-only)
-	if err := ioutil.WriteFile(secretPath, data, 0400); err != nil {
+	if err := os.WriteFile(secretPath, data, 0400); err != nil {
 		return fmt.Errorf("failed to write secret: %w", err)
 	}
 
@@ -92,7 +91,7 @@ func (sm *SecretManager) UpdateSecret(name, value string) error {
 	os.Remove(secretPath)
 
 	// Write new secret with restricted permissions
-	if err := ioutil.WriteFile(secretPath, data, 0400); err != nil {
+	if err := os.WriteFile(secretPath, data, 0400); err != nil {
 		return fmt.Errorf("failed to update secret: %w", err)
 	}
 
@@ -127,7 +126,7 @@ func (sm *SecretManager) GetSecret(name string) (string, error) {
 
 	secretPath := filepath.Join(sm.basePath, name)
 
-	data, err := ioutil.ReadFile(secretPath)
+	data, err := os.ReadFile(secretPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return "", fmt.Errorf("secret not found: %s", name)
@@ -143,7 +142,7 @@ func (sm *SecretManager) ListSecrets() ([]string, error) {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
 
-	files, err := ioutil.ReadDir(sm.basePath)
+	files, err := os.ReadDir(sm.basePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list secrets: %w", err)
 	}

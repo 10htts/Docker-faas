@@ -1,12 +1,16 @@
 # Docker FaaS v2.0 - Release Notes
 
-## 🎉 Major Release: Production-Ready with Enhanced Security
+> Archived document. This snapshot is retained for historical context and may be outdated.
+> For current documentation, see ../README.md.
+
+
+## Major Release: Production-Ready with Enhanced Security
 
 Docker FaaS v2.0 represents a significant milestone, transforming the platform from a functional MVP into a **production-grade, enterprise-ready** FaaS solution with enhanced security, secrets management, and debugging capabilities.
 
 ---
 
-## 📊 Release Overview
+## Release Overview
 
 **Version**: 2.0.0
 **Release Date**: December 2024
@@ -15,9 +19,9 @@ Docker FaaS v2.0 represents a significant milestone, transforming the platform f
 
 ---
 
-## ✨ What's New in v2.0
+## What's New in v2.0
 
-### 1. 🔐 Secrets Management (NEW)
+### 1.  Secrets Management (NEW)
 
 **Complete OpenFaaS-compatible secrets system**
 
@@ -29,12 +33,12 @@ Docker FaaS v2.0 represents a significant milestone, transforming the platform f
 - **RESTful API** for secret lifecycle management
 
 **Key Features:**
-- ✅ Create, read, update, delete secrets via API
-- ✅ Mount secrets as files in `/var/openfaas/secrets/<name>`
-- ✅ Validate secrets exist before deployment
-- ✅ Secure file permissions (0400 - owner read-only)
-- ✅ No secret values exposed via API
-- ✅ Thread-safe with mutex protection
+- [x] Create, read, update, delete secrets via API
+- [x] Mount secrets as files in `/var/openfaas/secrets/<name>`
+- [x] Validate secrets exist before deployment
+- [x] Secure file permissions (0400 - owner read-only)
+- [x] No secret values exposed via API
+- [x] Thread-safe with mutex protection
 
 **Usage:**
 ```bash
@@ -52,11 +56,11 @@ functions:
       - api-key
 ```
 
-**Documentation**: [docs/SECRETS.md](docs/SECRETS.md)
+**Documentation**: [SECRETS.md](../SECRETS.md)
 
 ---
 
-### 2. 🛡️ Security Hardening (NEW)
+### 2.  Security Hardening (NEW)
 
 **Enterprise-grade container security**
 
@@ -89,14 +93,14 @@ functions:
 ```
 
 **Impact:**
-- ✅ Prevents container breakout
-- ✅ Blocks privilege escalation
-- ✅ Isolates function containers
-- ✅ Hardens against kernel exploits
+- [x] Prevents container breakout
+- [x] Blocks privilege escalation
+- [x] Isolates function containers
+- [x] Hardens against kernel exploits
 
 ---
 
-### 3. 🐛 Debug Mode (NEW)
+### 3.  Debug Mode (NEW)
 
 **Developer-friendly debugging with automatic port mapping**
 
@@ -133,20 +137,20 @@ dlv connect localhost:32771
 
 ---
 
-## 📈 Improvements Over v1.0
+## Improvements Over v1.0
 
 ### Feature Comparison
 
 | Feature | v1.0 | v2.0 | Improvement |
 |---------|------|------|-------------|
 | **Security** |
-| Secrets management | ❌ | ✅ | **NEW** - Full OpenFaaS compatibility |
-| Capability dropping | ❌ | ✅ | **NEW** - All capabilities dropped |
-| No-new-privileges | ❌ | ✅ | **NEW** - Prevents privilege escalation |
-| Network isolation | Partial | ✅ | **ENHANCED** - ICC disabled |
+| Secrets management | [ ] | [x] | **NEW** - Full OpenFaaS compatibility |
+| Capability dropping | [ ] | [x] | **NEW** - All capabilities dropped |
+| No-new-privileges | [ ] | [x] | **NEW** - Prevents privilege escalation |
+| Network isolation | Partial | [x] | **ENHANCED** - ICC disabled |
 | **Development** |
-| Debug mode | ❌ | ✅ | **NEW** - Auto port mapping |
-| Debug port mapping | ❌ | ✅ | **NEW** - Multi-language support |
+| Debug mode | [ ] | [x] | **NEW** - Auto port mapping |
+| Debug port mapping | [ ] | [x] | **NEW** - Multi-language support |
 | **API** |
 | Secret endpoints | 0 | 5 | **NEW** - Full CRUD API |
 | **Testing** |
@@ -157,7 +161,7 @@ dlv connect localhost:32771
 
 ---
 
-## 🔧 Technical Details
+## Technical Details
 
 ### New Components
 
@@ -196,7 +200,7 @@ ALTER TABLE functions ADD COLUMN debug BOOLEAN NOT NULL DEFAULT 0;
 - `GET /system/secrets` - List secrets
 - `GET /system/secrets/{name}` - Get secret info
 - `PUT /system/secrets` - Update secret
-- `DELETE /system/secrets?name={name}` - Delete secret
+- `DELETE /system/secrets+name={name}` - Delete secret
 
 **Enhanced Endpoints:**
 - `POST /system/functions` - Now supports `secrets` and `debug` fields
@@ -204,24 +208,24 @@ ALTER TABLE functions ADD COLUMN debug BOOLEAN NOT NULL DEFAULT 0;
 
 ---
 
-## 📚 Documentation Updates
+## Documentation Updates
 
 ### New Documentation
 
-1. **[docs/SECRETS.md](docs/SECRETS.md)** (600+ lines)
+1. **[SECRETS.md](../SECRETS.md)** (600+ lines)
    - Complete secrets guide
    - API reference
    - Code examples for Python, Node.js, Go, Bash
    - Best practices
    - Troubleshooting
 
-2. **[docs/V2_ENHANCEMENTS.md](docs/V2_ENHANCEMENTS.md)** (400+ lines)
+2. **[V2_ENHANCEMENTS.md](../V2_ENHANCEMENTS.md)** (400+ lines)
    - Feature overview
    - Security details
    - Debug mode guide
    - Migration instructions
 
-3. **[SECRETS_IMPLEMENTATION.md](SECRETS_IMPLEMENTATION.md)** (300+ lines)
+3. **SECRETS_IMPLEMENTATION.md** (300+ lines) - consolidated into ../SECRETS.md
    - Technical implementation
    - Architecture diagrams
    - Testing guide
@@ -234,37 +238,37 @@ ALTER TABLE functions ADD COLUMN debug BOOLEAN NOT NULL DEFAULT 0;
 ### Updated Documentation
 
 - **README.md** - Added v2 feature highlights
-- **docs/API.md** - Added secret endpoints
-- **docs/DEPLOYMENT.md** - Enhanced security section
-- **docs/GETTING_STARTED.md** - Added debug mode examples
+- **API.md** - Added secret endpoints
+- **DEPLOYMENT.md** - Enhanced security section
+- **GETTING_STARTED.md** - Added debug mode examples
 
 ---
 
-## 🧪 Testing
+## Testing
 
 ### Test Coverage
 
 **Unit Tests:**
 ```
-pkg/secrets        14 tests    ✅ 100% pass
-pkg/store           8 tests    ✅ 100% pass
-pkg/config          2 tests    ✅ 100% pass
-pkg/middleware      6 tests    ✅ 100% pass
+pkg/secrets        14 tests    [x] 100% pass
+pkg/store           8 tests    [x] 100% pass
+pkg/config          2 tests    [x] 100% pass
+pkg/middleware      6 tests    [x] 100% pass
 --------------------------------
-Total:             30 tests    ✅ 100% pass
+Total:             30 tests    [x] 100% pass
 ```
 
 **E2E Tests:**
 ```
-OpenFaaS compatibility  25 tests    ✅ 100% pass
-Secrets workflow         9 tests    ✅ 100% pass
+OpenFaaS compatibility  25 tests    [x] 100% pass
+Secrets workflow         9 tests    [x] 100% pass
 --------------------------------
-Total:                  34 tests    ✅ 100% pass
+Total:                  34 tests    [x] 100% pass
 ```
 
 **Integration Tests:**
 ```
-Full workflow           8 tests    ✅ 100% pass
+Full workflow           8 tests    [x] 100% pass
 ```
 
 **Overall Coverage:** >80%
@@ -277,11 +281,11 @@ Full workflow           8 tests    ✅ 100% pass
 
 ---
 
-## 🚀 Upgrade Guide
+## Upgrade Guide
 
 ### From v1.0 to v2.0
 
-**✅ Zero downtime upgrade** - Fully backward compatible
+**[x] Zero downtime upgrade** - Fully backward compatible
 
 #### Step 1: Backup
 
@@ -336,7 +340,7 @@ done
 
 ---
 
-## ⚠️ Breaking Changes
+## [!] Breaking Changes
 
 **None** - v2.0 is fully backward compatible with v1.0
 
@@ -344,7 +348,7 @@ All existing function deployments will continue to work without modification. Ne
 
 ---
 
-## 🔒 Security Considerations
+## Security Considerations
 
 ### What Changed
 
@@ -371,44 +375,44 @@ Most functions will work without changes. If your function requires:
 
 ---
 
-## 📦 What's Included
+## What's Included
 
 ### Core Platform
 
-- ✅ Gateway API (100% OpenFaaS compatible)
-- ✅ Docker provider with enhanced security
-- ✅ Function router with load balancing
-- ✅ SQLite state store
-- ✅ Prometheus metrics
-- ✅ Basic authentication
+- [x] Gateway API (100% OpenFaaS compatible)
+- [x] Docker provider with enhanced security
+- [x] Function router with load balancing
+- [x] SQLite state store
+- [x] Prometheus metrics
+- [x] Basic authentication
 
 ### v2 Enhancements
 
-- ✅ Secrets management (file-based)
-- ✅ Security hardening (capabilities, privileges, network)
-- ✅ Debug mode (port mapping, no timeouts)
+- [x] Secrets management (file-based)
+- [x] Security hardening (capabilities, privileges, network)
+- [x] Debug mode (port mapping, no timeouts)
 
 ### Development Tools
 
-- ✅ Docker Compose setup
-- ✅ Comprehensive test suite
-- ✅ Verification scripts
-- ✅ Example functions
+- [x] Docker Compose setup
+- [x] Comprehensive test suite
+- [x] Verification scripts
+- [x] Example functions
 
 ### Documentation
 
-- ✅ Getting started guide
-- ✅ API reference
-- ✅ Deployment guide
-- ✅ Secrets management guide
-- ✅ Architecture documentation
-- ✅ Contributing guidelines
+- [x] Getting started guide
+- [x] API reference
+- [x] Deployment guide
+- [x] Secrets management guide
+- [x] Architecture documentation
+- [x] Contributing guidelines
 
 ---
 
-## 🎯 Production Readiness Checklist
+## Production Readiness Checklist
 
-### Security ✅
+### Security [x]
 
 - [x] Secrets management implemented
 - [x] Capability dropping enabled
@@ -419,7 +423,7 @@ Most functions will work without changes. If your function requires:
 - [ ] Audit logging (recommended)
 - [ ] Rate limiting (recommended via reverse proxy)
 
-### Functionality ✅
+### Functionality [x]
 
 - [x] All OpenFaaS core endpoints
 - [x] Function CRUD operations
@@ -429,7 +433,7 @@ Most functions will work without changes. If your function requires:
 - [x] Log retrieval
 - [x] Health checks
 
-### Operations ✅
+### Operations [x]
 
 - [x] Docker Compose setup
 - [x] Database persistence
@@ -438,7 +442,7 @@ Most functions will work without changes. If your function requires:
 - [x] Resource limits
 - [x] Backup procedures documented
 
-### Testing ✅
+### Testing [x]
 
 - [x] Unit tests (>80% coverage)
 - [x] Integration tests
@@ -447,7 +451,7 @@ Most functions will work without changes. If your function requires:
 - [x] Security hardening verified
 - [x] Secrets workflow tested
 
-### Documentation ✅
+### Documentation [x]
 
 - [x] User documentation
 - [x] API reference
@@ -458,7 +462,7 @@ Most functions will work without changes. If your function requires:
 
 ---
 
-## 🐛 Known Issues
+## Known Issues
 
 **None** - All features tested and working
 
@@ -466,7 +470,7 @@ Report issues: https://github.com/docker-faas/docker-faas/issues
 
 ---
 
-## 🔮 Future Roadmap (v3.0)
+## Future Roadmap (v3.0)
 
 Planned enhancements for next major release:
 
@@ -482,7 +486,7 @@ Planned enhancements for next major release:
 
 ---
 
-## 📊 Statistics
+## Statistics
 
 ### Code Metrics
 
@@ -501,7 +505,7 @@ Planned enhancements for next major release:
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - Inspired by [OpenFaaS](https://github.com/openfaas/faas)
 - Uses [of-watchdog](https://github.com/openfaas/of-watchdog)
@@ -510,33 +514,33 @@ Planned enhancements for next major release:
 
 ---
 
-## 📝 License
+## License
 
-MIT License - See [LICENSE](LICENSE) for details
-
----
-
-## 📞 Support
-
-- 📚 [Documentation](docs/)
-- 🐛 [Issue Tracker](https://github.com/docker-faas/docker-faas/issues)
-- 💬 [Discussions](https://github.com/docker-faas/docker-faas/discussions)
+MIT License - See [LICENSE](../../LICENSE) for details
 
 ---
 
-## ✅ Summary
+## Support
+
+-  [Documentation](../)
+-  [Issue Tracker](https://github.com/docker-faas/docker-faas/issues)
+-  [Discussions](https://github.com/docker-faas/docker-faas/discussions)
+
+---
+
+## [x] Summary
 
 Docker FaaS v2.0 is a **production-ready, enterprise-grade** FaaS platform that:
 
-✅ Maintains 100% OpenFaaS compatibility
-✅ Adds comprehensive secrets management
-✅ Implements strong security hardening
-✅ Provides developer-friendly debugging
-✅ Is fully backward compatible
-✅ Is thoroughly tested (>80% coverage)
-✅ Is comprehensively documented
+[x] Maintains 100% OpenFaaS compatibility
+[x] Adds comprehensive secrets management
+[x] Implements strong security hardening
+[x] Provides developer-friendly debugging
+[x] Is fully backward compatible
+[x] Is thoroughly tested (>80% coverage)
+[x] Is comprehensively documented
 
-**Ready for production deployment!** 🚀
+**Ready for production deployment!** 
 
 ---
 

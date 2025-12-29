@@ -22,17 +22,22 @@ func TestStore(t *testing.T) {
 	defer store.Close()
 
 	t.Run("CreateFunction", func(t *testing.T) {
+		envVars, err := EncodeMap(map[string]string{"KEY": "value"})
+		require.NoError(t, err)
+		labels, err := EncodeMap(map[string]string{"label": "test"})
+		require.NoError(t, err)
+
 		metadata := &types.FunctionMetadata{
 			Name:       "test-func",
 			Image:      "test/image:latest",
 			EnvProcess: "python handler.py",
-			EnvVars:    EncodeMap(map[string]string{"KEY": "value"}),
-			Labels:     EncodeMap(map[string]string{"label": "test"}),
+			EnvVars:    envVars,
+			Labels:     labels,
 			Network:    "docker-faas-net",
 			Replicas:   2,
 		}
 
-		err := store.CreateFunction(metadata)
+		err = store.CreateFunction(metadata)
 		assert.NoError(t, err)
 		assert.Greater(t, metadata.ID, int64(0))
 	})

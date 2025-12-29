@@ -19,6 +19,11 @@ class DockerFaaSApp {
         this.sourceRemovedPaths = new Set();
         this.sourceKey = '';
         this.defaultGatewayUrl = this.getDefaultGatewayUrl();
+        this.loadingCount = 0;
+        this.sessionTimeoutMs = 30 * 60 * 1000;
+        this.inactivityTimer = null;
+        this.activityHandler = null;
+        this.activityEvents = ['click', 'keypress', 'mousemove', 'scroll', 'touchstart'];
 
         this.init();
     }
@@ -129,13 +134,24 @@ class DockerFaaSApp {
     checkSession() {
         const session = localStorage.getItem('dockerfaas-session');
         if (session) {
-            const data = JSON.parse(session);
+            let data;
+            try {
+                data = JSON.parse(session);
+            } catch (error) {
+                localStorage.removeItem('dockerfaas-session');
+                return;
+            }
             this.gatewayUrl = this.normalizeGatewayUrl(data.gatewayUrl || this.defaultGatewayUrl);
-            this.username = data.username;
-            this.password = data.password;
-            this.authenticated = true;
-            this.showApp();
-            this.loadOverview();
+            this.username = data.username || '';
+
+            const gatewayInput = document.getElementById('gateway-url');
+            if (gatewayInput) {
+                gatewayInput.value = this.gatewayUrl;
+            }
+            const usernameInput = document.getElementById('username');
+            if (usernameInput) {
+                usernameInput.value = this.username;
+            }
         }
     }
 
@@ -155,11 +171,11 @@ class DockerFaaSApp {
             const response = await this.api('/system/info');
             if (response.ok) {
                 this.authenticated = true;
-                localStorage.setItem('dockerfaas-session', JSON.stringify({
-                    gatewayUrl: this.gatewayUrl,
-                    username: this.username,
-                    password: this.password
-                }));
+                this.saveSession();
+                const passwordInput = document.getElementById('password');
+                if (passwordInput) {
+                    passwordInput.value = '';
+                }
                 this.showApp();
                 this.loadOverview();
                 this.showToast('Connected successfully', 'success');
@@ -171,11 +187,15 @@ class DockerFaaSApp {
         }
     }
 
-    logout() {
+    logout(options = {}) {
+        const silent = options.silent === true;
         this.authenticated = false;
-        localStorage.removeItem('dockerfaas-session');
+        this.password = '';
+        this.saveSession();
         this.hideApp();
-        this.showToast('Disconnected', 'success');
+        if (!silent) {
+            this.showToast('Disconnected', 'success');
+        }
     }
 
     showApp() {
@@ -183,31 +203,49 @@ class DockerFaaSApp {
         document.getElementById('app-screen').classList.add('active');
         document.getElementById('header-gateway-url').textContent = this.gatewayUrl;
         this.startAutoRefresh();
+        this.setupSessionTimeout();
     }
 
     hideApp() {
         document.getElementById('app-screen').classList.remove('active');
         document.getElementById('login-screen').classList.add('active');
         this.stopAutoRefresh();
+        this.clearSessionTimeout();
     }
 
     // API Methods
     async api(endpoint, options = {}) {
+        if (this.authenticated) {
+            this.resetInactivityTimer();
+        }
         const url = `${this.gatewayUrl}${endpoint}`;
+        const { raw, showLoading, ...fetchOptions } = options;
         const headers = {
             'Authorization': 'Basic ' + btoa(`${this.username}:${this.password}`),
-            ...options.headers
+            ...fetchOptions.headers
         };
 
         const hasContentType = Object.keys(headers).some((key) => key.toLowerCase() === 'content-type');
-        if (!options.raw && options.body !== undefined && !hasContentType) {
+        if (!raw && fetchOptions.body !== undefined && !hasContentType) {
             headers['Content-Type'] = 'application/json';
         }
 
-        return fetch(url, {
-            ...options,
-            headers
-        });
+        const method = (fetchOptions.method || 'GET').toUpperCase();
+        const shouldShowLoading = showLoading === true || (showLoading !== false && method !== 'GET');
+        if (shouldShowLoading) {
+            this.showLoading();
+        }
+
+        try {
+            return await fetch(url, {
+                ...fetchOptions,
+                headers
+            });
+        } finally {
+            if (shouldShowLoading) {
+                this.hideLoading();
+            }
+        }
     }
 
     // View Management
@@ -268,6 +306,48 @@ class DockerFaaSApp {
         if (this.refreshInterval) {
             clearInterval(this.refreshInterval);
             this.refreshInterval = null;
+        }
+    }
+
+    saveSession() {
+        localStorage.setItem('dockerfaas-session', JSON.stringify({
+            gatewayUrl: this.gatewayUrl,
+            username: this.username
+        }));
+    }
+
+    setupSessionTimeout() {
+        this.clearSessionTimeout();
+        this.activityHandler = () => this.resetInactivityTimer();
+        this.activityEvents.forEach((eventName) => {
+            document.addEventListener(eventName, this.activityHandler, { passive: true });
+        });
+        this.resetInactivityTimer();
+    }
+
+    resetInactivityTimer() {
+        if (!this.authenticated) {
+            return;
+        }
+        if (this.inactivityTimer) {
+            clearTimeout(this.inactivityTimer);
+        }
+        this.inactivityTimer = setTimeout(() => {
+            this.showToast('Session expired. Please log in again.', 'warning');
+            this.logout({ silent: true });
+        }, this.sessionTimeoutMs);
+    }
+
+    clearSessionTimeout() {
+        if (this.inactivityTimer) {
+            clearTimeout(this.inactivityTimer);
+            this.inactivityTimer = null;
+        }
+        if (this.activityHandler) {
+            this.activityEvents.forEach((eventName) => {
+                document.removeEventListener(eventName, this.activityHandler);
+            });
+            this.activityHandler = null;
         }
     }
 
@@ -1536,7 +1616,9 @@ class DockerFaaSApp {
         }
 
         try {
-            const response = await this.api(`/system/logs?name=${encodeURIComponent(functionName)}&tail=${tail}`);
+            const response = await this.api(`/system/logs?name=${encodeURIComponent(functionName)}&tail=${tail}`, {
+                showLoading: true
+            });
             if (response.ok) {
                 const logs = await response.text();
                 document.getElementById('logs-output').textContent = logs || 'No logs available';
@@ -1550,6 +1632,25 @@ class DockerFaaSApp {
     }
 
     // UI Helpers
+    showLoading() {
+        this.loadingCount += 1;
+        const overlay = document.getElementById('loading-overlay');
+        if (overlay) {
+            overlay.classList.add('active');
+        }
+    }
+
+    hideLoading() {
+        this.loadingCount = Math.max(0, this.loadingCount - 1);
+        if (this.loadingCount > 0) {
+            return;
+        }
+        const overlay = document.getElementById('loading-overlay');
+        if (overlay) {
+            overlay.classList.remove('active');
+        }
+    }
+
     showError(elementId, message) {
         const element = document.getElementById(elementId);
         if (element) {

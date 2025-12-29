@@ -18,6 +18,8 @@ services:
       - AUTH_ENABLED=true
       - AUTH_USER=admin
       - AUTH_PASSWORD=admin
+      # OpenFaaS compatibility for /function/* (set true for strict auth in prod)
+      - REQUIRE_AUTH_FOR_FUNCTIONS=false
       - LOG_LEVEL=info
       - STATE_DB_PATH=/data/docker-faas.db
       - READ_TIMEOUT=60s
@@ -32,6 +34,12 @@ services:
       - faas-data:/data
       - faas-secrets:/var/openfaas/secrets
       - ./web/static:/app/web/static:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
     networks:
       - docker-faas-net
     restart: unless-stopped

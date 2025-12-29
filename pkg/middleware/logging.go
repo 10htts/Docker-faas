@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/docker-faas/docker-faas/pkg/metrics"
+	"github.com/sirupsen/logrus"
 )
 
 // responseWriter wraps http.ResponseWriter to capture status code
@@ -49,15 +49,15 @@ func (m *LoggingMiddleware) Middleware(next http.Handler) http.Handler {
 		// Log request
 		duration := time.Since(start)
 		m.logger.WithFields(logrus.Fields{
-			"method":     r.Method,
-			"path":       r.URL.Path,
-			"status":     rw.statusCode,
-			"duration":   duration,
+			"method":      r.Method,
+			"path":        r.URL.Path,
+			"status":      rw.statusCode,
+			"duration":    duration,
 			"remote_addr": r.RemoteAddr,
-			"user_agent": r.UserAgent(),
+			"user_agent":  r.UserAgent(),
 		}).Info("HTTP request")
 
 		// Record metrics
-		metrics.RecordGatewayRequest(r.Method, r.URL.Path, rw.statusCode)
+		metrics.RecordGatewayRequest(r.Method, r.URL.Path, rw.statusCode, duration.Seconds())
 	})
 }

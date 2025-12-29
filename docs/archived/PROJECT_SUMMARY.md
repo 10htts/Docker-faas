@@ -1,59 +1,63 @@
 # Docker FaaS - Project Summary
 
+> Archived document. This snapshot is retained for historical context and may be outdated.
+> For current documentation, see ../README.md.
+
+
 ## Overview
 
 **Docker FaaS** is a production-ready, OpenFaaS-compatible Function-as-a-Service platform built on Docker. It provides a lightweight alternative to Kubernetes-based FaaS platforms while maintaining full compatibility with the OpenFaaS ecosystem.
 
-## Project Status
+## Project Status (historical snapshot)
 
-✅ **COMPLETE AND PRODUCTION READY**
+[x] **COMPLETE AND PRODUCTION READY**
 
-All core features have been implemented, tested, and documented. The project is ready for deployment and use.
+Status reflects the time this summary was written. For current status, see ../PRODUCTION_READINESS.md.
 
 ## Project Structure
 
 ```
 docker-faas/
-├── cmd/
-│   └── gateway/              # Main application entry point
-├── pkg/
-│   ├── config/              # Configuration management (with tests)
-│   ├── gateway/             # HTTP API handlers
-│   ├── middleware/          # Auth & logging middleware (with tests)
-│   ├── metrics/             # Prometheus metrics
-│   ├── provider/            # Docker container management
-│   ├── router/              # Request routing & load balancing
-│   ├── store/               # SQLite database layer (with tests)
-│   └── types/               # Type definitions
-├── tests/
-│   └── integration/         # Integration test suite
-├── examples/
-│   ├── hello-world/         # Example Python function
-│   └── stack.yml            # Example function stack
-├── docs/
-│   ├── API.md               # Complete API reference
-│   ├── ARCHITECTURE.md      # Architecture documentation
-│   ├── DEPLOYMENT.md        # Production deployment guide
-│   ├── GETTING_STARTED.md   # Quick start guide
-│   └── README.md            # Documentation index
-├── .github/
-│   └── workflows/
-│       ├── ci.yml           # CI pipeline
-│       └── release.yml      # Release automation
-├── Dockerfile               # Gateway container image
-├── docker-compose.yml       # Development setup
-├── Makefile                 # Build automation
-├── go.mod                   # Go dependencies
-├── README.md                # Main documentation
-├── LICENSE                  # MIT License
-├── CONTRIBUTING.md          # Contribution guidelines
-├── CHANGELOG.md             # Version history
-└── .env.example             # Environment configuration template
+|-- cmd/
+|   +-- gateway/              # Main application entry point
+|-- pkg/
+|   |-- config/              # Configuration management (with tests)
+|   |-- gateway/             # HTTP API handlers
+|   |-- middleware/          # Auth & logging middleware (with tests)
+|   |-- metrics/             # Prometheus metrics
+|   |-- provider/            # Docker container management
+|   |-- router/              # Request routing & load balancing
+|   |-- store/               # SQLite database layer (with tests)
+|   +-- types/               # Type definitions
+|-- tests/
+|   +-- integration/         # Integration test suite
+|-- examples/
+|   |-- hello-world/         # Example Python function
+|   +-- stack.yml            # Example function stack
+|-- docs/
+|   |-- API.md               # Complete API reference
+|   |-- ARCHITECTURE.md      # Architecture documentation
+|   |-- DEPLOYMENT.md        # Production deployment guide
+|   |-- GETTING_STARTED.md   # Quick start guide
+|   +-- README.md            # Documentation index
+|-- .github/
+|   +-- ISSUE_TEMPLATE/      # Issue templates
+|   +-- PULL_REQUEST_TEMPLATE.md
+|   +-- workflows/           # Planned CI workflows (not in current repo)
+|-- Dockerfile               # Gateway container image
+|-- docker-compose.yml       # Development setup
+|-- Makefile                 # Build automation
+|-- go.mod                   # Go dependencies
+|-- README.md                # Main documentation
+|-- LICENSE                  # MIT License
+|-- CONTRIBUTING.md          # Contribution guidelines
+|-- CHANGELOG.md             # Version history
++-- .env.example             # Environment configuration template
 ```
 
 ## Features Implemented
 
-### Core Functionality ✅
+### Core Functionality [x]
 - [x] OpenFaaS-compatible Gateway API
 - [x] Docker provider for container management
 - [x] Function router with round-robin load balancing
@@ -65,7 +69,7 @@ docker-faas/
 - [x] System information endpoint
 - [x] Health check endpoint
 
-### Security ✅
+### Security [x]
 - [x] Basic HTTP authentication
 - [x] Constant-time password comparison
 - [x] TLS support (via reverse proxy)
@@ -73,7 +77,7 @@ docker-faas/
 - [x] Read-only filesystem option
 - [x] Network isolation
 
-### Observability ✅
+### Observability [x]
 - [x] Prometheus metrics integration
 - [x] Structured logging (logrus)
 - [x] Request/response logging
@@ -81,7 +85,7 @@ docker-faas/
 - [x] Error tracking
 - [x] Duration histograms
 
-### Development & Operations ✅
+### Development & Operations [x]
 - [x] Docker Compose setup
 - [x] Dockerfile for production
 - [x] Environment-based configuration
@@ -89,14 +93,14 @@ docker-faas/
 - [x] Graceful shutdown
 - [x] Error recovery
 
-### Testing ✅
+### Testing [x]
 - [x] Unit tests (store, config, middleware)
 - [x] Integration tests (full workflow)
 - [x] Test coverage tracking
-- [x] CI/CD pipeline
-- [x] Automated testing on PR
+- [ ] CI/CD pipeline (not in current repo)
+- [ ] Automated testing on PR (not in current repo)
 
-### Documentation ✅
+### Documentation [x]
 - [x] Comprehensive README
 - [x] API documentation
 - [x] Architecture documentation
@@ -122,16 +126,16 @@ All endpoints implemented and tested:
 
 | Endpoint | Method | Status |
 |----------|--------|--------|
-| `/system/info` | GET | ✅ |
-| `/system/functions` | GET | ✅ |
-| `/system/functions` | POST | ✅ |
-| `/system/functions` | PUT | ✅ |
-| `/system/functions` | DELETE | ✅ |
-| `/system/scale-function/{name}` | POST | ✅ |
-| `/system/logs` | GET | ✅ |
-| `/function/{name}` | POST/GET/PUT/DELETE | ✅ |
-| `/healthz` | GET | ✅ |
-| `/metrics` | GET | ✅ |
+| `/system/info` | GET | [x] |
+| `/system/functions` | GET | [x] |
+| `/system/functions` | POST | [x] |
+| `/system/functions` | PUT | [x] |
+| `/system/functions` | DELETE | [x] |
+| `/system/scale-function/{name}` | POST | [x] |
+| `/system/logs` | GET | [x] |
+| `/function/{name}` | POST/GET/PUT/DELETE | [x] |
+| `/healthz` | GET | [x] |
+| `/metrics` | GET | [x] |
 
 ## Quick Start
 
@@ -207,19 +211,10 @@ All configuration via environment variables:
 - `DEFAULT_REPLICAS=1`
 - `MAX_REPLICAS=10`
 
-## CI/CD
+## CI/CD (historical plan)
 
-GitHub Actions workflows:
-
-1. **CI Pipeline** (`.github/workflows/ci.yml`)
-   - Runs on: Push to main/develop, Pull Requests
-   - Steps: Test → Build → Docker Build → Integration Tests
-   - Coverage: Uploads to Codecov
-
-2. **Release Pipeline** (`.github/workflows/release.yml`)
-   - Runs on: Version tags (v*)
-   - Steps: Test → Build multi-platform binaries → Create release → Push Docker image
-   - Outputs: GitHub release with binaries, Docker image on GHCR
+This snapshot referenced GitHub Actions workflows that are not included in the current repository.
+If you want CI, consider adding workflows to run `make test` and `go test ./...`.
 
 ## Testing Coverage
 
@@ -248,7 +243,7 @@ GitHub Actions workflows:
 - [x] Tests written and passing
 - [x] Documentation complete
 - [x] Docker image built
-- [x] CI/CD configured
+- [ ] CI/CD configured (not in current repo)
 - [x] Example functions provided
 - [x] Deployment guide written
 - [x] License included
@@ -256,7 +251,7 @@ GitHub Actions workflows:
 - [x] Security considerations documented
 - [x] Performance characteristics documented
 
-## Known Limitations
+## Known Limitations (historical)
 
 1. **Single Node**: Designed for single-node deployment
 2. **SQLite**: Not suitable for extremely high concurrency
@@ -289,22 +284,22 @@ The platform is designed with migration in mind:
 
 ## Getting Started
 
-1. **First Time Users**: Read [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)
-2. **Production Deployment**: Read [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
-3. **API Integration**: Read [docs/API.md](docs/API.md)
-4. **Contributing**: Read [CONTRIBUTING.md](CONTRIBUTING.md)
-5. **Architecture**: Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+1. **First Time Users**: Read [GETTING_STARTED.md](../GETTING_STARTED.md)
+2. **Production Deployment**: Read [DEPLOYMENT.md](../DEPLOYMENT.md)
+3. **API Integration**: Read [API.md](../API.md)
+4. **Contributing**: Read [CONTRIBUTING.md](../../CONTRIBUTING.md)
+5. **Architecture**: Read [ARCHITECTURE.md](../ARCHITECTURE.md)
 
 ## Support & Community
 
-- 📚 Documentation: [/docs](docs/)
-- 🐛 Issues: [GitHub Issues](https://github.com/docker-faas/docker-faas/issues)
-- 💬 Discussions: [GitHub Discussions](https://github.com/docker-faas/docker-faas/discussions)
-- 📧 Email: support@docker-faas.io
+-  Documentation: [docs/](../)
+-  Issues: [GitHub Issues](https://github.com/docker-faas/docker-faas/issues)
+-  Discussions: [GitHub Discussions](https://github.com/docker-faas/docker-faas/discussions)
+-  Email: support@docker-faas.io
 
 ## License
 
-MIT License - See [LICENSE](LICENSE) for details.
+MIT License - See [LICENSE](../../LICENSE) for details.
 
 ## Acknowledgments
 
@@ -327,11 +322,11 @@ MIT License - See [LICENSE](LICENSE) for details.
 
 Docker FaaS is a **complete, tested, and production-ready** FaaS platform. It's ready to be:
 
-- ✅ Deployed to production
-- ✅ Published to GitHub
-- ✅ Distributed via Docker Hub/GHCR
-- ✅ Used by developers
-- ✅ Extended with new features
-- ✅ Contributed to by the community
+- [x] Deployed to production
+- [x] Published to GitHub
+- [x] Distributed via Docker Hub/GHCR
+- [x] Used by developers
+- [x] Extended with new features
+- [x] Contributed to by the community
 
 All MVP requirements from the specification have been met and exceeded.

@@ -1,5 +1,9 @@
 # Docker-FaaS Enhancement Report
 
+> Archived document. This snapshot is retained for historical context and may be outdated.
+> For current documentation, see ../README.md.
+
+
 ## 1. Project Status Overview
 **Date:** 2025-12-23
 **Status:** Functional Alpha

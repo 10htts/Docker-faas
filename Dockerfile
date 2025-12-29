@@ -19,7 +19,7 @@ RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o docker-faas-gatew
 # Final stage
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y ca-certificates sqlite3 libsqlite3-0 git && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y ca-certificates sqlite3 libsqlite3-0 git curl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /root/
 
@@ -33,6 +33,8 @@ COPY --from=builder /app/docs /root/docs
 
 # Expose ports
 EXPOSE 8080 9090
+
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 CMD curl -fsS http://localhost:8080/healthz || exit 1
 
 # Run the application
 CMD ["./docker-faas-gateway"]

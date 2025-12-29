@@ -12,7 +12,8 @@ func TestEncodeDecodeMap(t *testing.T) {
 		"key2": "value2",
 	}
 
-	encoded := EncodeMap(original)
+	encoded, err := EncodeMap(original)
+	assert.NoError(t, err)
 	assert.NotEmpty(t, encoded)
 
 	decoded := DecodeMap(encoded)
@@ -22,7 +23,8 @@ func TestEncodeDecodeMap(t *testing.T) {
 func TestEncodeDecodeSlice(t *testing.T) {
 	original := []string{"secret1", "secret2", "secret3"}
 
-	encoded := EncodeSlice(original)
+	encoded, err := EncodeSlice(original)
+	assert.NoError(t, err)
 	assert.NotEmpty(t, encoded)
 
 	decoded := DecodeSlice(encoded)
@@ -31,14 +33,16 @@ func TestEncodeDecodeSlice(t *testing.T) {
 
 func TestEncodeDecodeEmptyValues(t *testing.T) {
 	// Empty map
-	emptyMap := EncodeMap(nil)
+	emptyMap, err := EncodeMap(nil)
+	assert.NoError(t, err)
 	assert.Empty(t, emptyMap)
 	decoded := DecodeMap("")
 	assert.NotNil(t, decoded)
 	assert.Len(t, decoded, 0)
 
 	// Empty slice
-	emptySlice := EncodeSlice(nil)
+	emptySlice, err := EncodeSlice(nil)
+	assert.NoError(t, err)
 	assert.Empty(t, emptySlice)
 	decodedSlice := DecodeSlice("")
 	assert.NotNil(t, decodedSlice)

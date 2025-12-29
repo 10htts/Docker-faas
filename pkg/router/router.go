@@ -8,19 +8,19 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/docker-faas/docker-faas/pkg/provider"
 	"github.com/docker-faas/docker-faas/pkg/types"
+	"github.com/sirupsen/logrus"
 )
 
 // Router handles routing requests to function containers
 type Router struct {
-	provider      *provider.DockerProvider
-	logger        *logrus.Logger
-	readTimeout   time.Duration
-	writeTimeout  time.Duration
-	execTimeout   time.Duration
-	roundRobin    map[string]*uint64 // Function name -> counter for round-robin
+	provider     *provider.DockerProvider
+	logger       *logrus.Logger
+	readTimeout  time.Duration
+	writeTimeout time.Duration
+	execTimeout  time.Duration
+	roundRobin   map[string]*uint64 // Function name -> counter for round-robin
 }
 
 // NewRouter creates a new router instance

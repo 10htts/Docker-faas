@@ -3,6 +3,7 @@ package middleware
 import (
 	"crypto/subtle"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -10,19 +11,23 @@ import (
 
 // BasicAuthMiddleware provides basic authentication
 type BasicAuthMiddleware struct {
-	username string
-	password string
-	enabled  bool
-	logger   *logrus.Logger
+	username            string
+	password            string
+	enabled             bool
+	requireFunctionAuth bool
+	rateLimiter         *authRateLimiter
+	logger              *logrus.Logger
 }
 
 // NewBasicAuthMiddleware creates a new basic auth middleware
-func NewBasicAuthMiddleware(username, password string, enabled bool, logger *logrus.Logger) *BasicAuthMiddleware {
+func NewBasicAuthMiddleware(username, password string, enabled bool, requireFunctionAuth bool, rateLimiter *authRateLimiter, logger *logrus.Logger) *BasicAuthMiddleware {
 	return &BasicAuthMiddleware{
-		username: username,
-		password: password,
-		enabled:  enabled,
-		logger:   logger,
+		username:            username,
+		password:            password,
+		enabled:             enabled,
+		requireFunctionAuth: requireFunctionAuth,
+		rateLimiter:         rateLimiter,
+		logger:              logger,
 	}
 }
 
@@ -35,20 +40,27 @@ func (m *BasicAuthMiddleware) Middleware(next http.Handler) http.Handler {
 			return
 		}
 
-	// Skip auth for health check endpoint
-	if r.URL.Path == "/healthz" {
-		next.ServeHTTP(w, r)
-		return
-	}
-	// Allow unauthenticated function invocation for OpenFaaS compatibility.
-	if strings.HasPrefix(r.URL.Path, "/function/") {
-		next.ServeHTTP(w, r)
-		return
-	}
+		// Skip auth for health check endpoint
+		if r.URL.Path == "/healthz" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		// Allow unauthenticated function invocation for OpenFaaS compatibility.
+		if !m.requireFunctionAuth && strings.HasPrefix(r.URL.Path, "/function/") {
+			next.ServeHTTP(w, r)
+			return
+		}
 
 		// Get credentials from request
 		username, password, ok := r.BasicAuth()
 		if !ok {
+			if allowed, retryAfter := m.rateLimiter.allow(clientKey(r)); !allowed {
+				if retryAfter > 0 {
+					w.Header().Set("Retry-After", strconv.FormatInt(int64(retryAfter.Seconds()), 10))
+				}
+				http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+				return
+			}
 			m.unauthorized(w)
 			return
 		}
@@ -58,12 +70,20 @@ func (m *BasicAuthMiddleware) Middleware(next http.Handler) http.Handler {
 		passwordMatch := subtle.ConstantTimeCompare([]byte(password), []byte(m.password)) == 1
 
 		if !usernameMatch || !passwordMatch {
+			if allowed, retryAfter := m.rateLimiter.allow(clientKey(r)); !allowed {
+				if retryAfter > 0 {
+					w.Header().Set("Retry-After", strconv.FormatInt(int64(retryAfter.Seconds()), 10))
+				}
+				http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+				return
+			}
 			m.logger.Warnf("Authentication failed for user: %s from %s", username, r.RemoteAddr)
 			m.unauthorized(w)
 			return
 		}
 
 		// Authentication successful
+		m.rateLimiter.reset(clientKey(r))
 		next.ServeHTTP(w, r)
 	})
 }

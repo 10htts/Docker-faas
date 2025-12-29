@@ -1,8 +1,12 @@
 # Docker FaaS v2.0 - Validation Summary
 
+> Archived document. This snapshot is retained for historical context and may be outdated.
+> For current documentation, see ../README.md.
+
+
 ## Build Status
 
-✅ **Build**: Successful
+[x] **Build**: Successful
 ```bash
 go build -o bin/gateway.exe ./cmd/gateway
 # Build completed without errors
@@ -16,11 +20,11 @@ go build -o bin/gateway.exe ./cmd/gateway
 
 | Package | Tests | Status | Coverage |
 |---------|-------|--------|----------|
-| pkg/config | 2 | ✅ PASS | 100% |
-| pkg/middleware | 6 | ✅ PASS | 100% |
-| pkg/secrets | 14 | ✅ PASS | 100% |
-| pkg/store (encode/decode) | 3 | ✅ PASS | 100% |
-| **Total** | **25** | **✅ ALL PASS** | **>80%** |
+| pkg/config | 2 | [x] PASS | 100% |
+| pkg/middleware | 6 | [x] PASS | 100% |
+| pkg/secrets | 14 | [x] PASS | 100% |
+| pkg/store (encode/decode) | 3 | [x] PASS | 100% |
+| **Total** | **25** | **[x] ALL PASS** | **>80%** |
 
 **Note**: SQLite tests require CGO_ENABLED=1 and are tested via integration/E2E tests.
 
@@ -28,34 +32,34 @@ go build -o bin/gateway.exe ./cmd/gateway
 
 ## Production Readiness Status
 
-### ✅ 1. Database Migration System (COMPLETE)
+### [x] 1. Database Migration System (COMPLETE)
 
-**Implementation**: [pkg/store/migrations.go](pkg/store/migrations.go)
+**Implementation**: [pkg/store/migrations.go](../../pkg/store/migrations.go)
 
 **Features**:
-- ✅ Version-tracked migrations with `schema_migrations` table
-- ✅ Transaction-based application for safety
-- ✅ Rollback support for emergency downgrades
-- ✅ Automatic application on gateway startup
-- ✅ Two migrations: v1 (initial schema) and v2 (add debug column)
+- [x] Version-tracked migrations with `schema_migrations` table
+- [x] Transaction-based application for safety
+- [x] Rollback support for emergency downgrades
+- [x] Automatic application on gateway startup
+- [x] Two migrations: v1 (initial schema) and v2 (add debug column)
 
 **Impact**: Safe, zero-downtime upgrades from v1.0 to v2.0
 
-**Verification**: Test script at [tests/e2e/test-upgrade.sh](tests/e2e/test-upgrade.sh)
+**Verification**: Test script at [tests/e2e/test-upgrade.sh](../../tests/e2e/test-upgrade.sh)
 
 ---
 
-### ✅ 2. Debug Port Security (COMPLETE)
+### [x] 2. Debug Port Security (COMPLETE)
 
 **Implementation**:
-- [pkg/config/config.go](pkg/config/config.go#L41) - Configuration
-- [pkg/provider/docker_provider.go](pkg/provider/docker_provider.go#L234-246) - Port binding logic
+- [pkg/config/config.go](../../pkg/config/config.go#L41) - Configuration
+- [pkg/provider/docker_provider.go](../../pkg/provider/docker_provider.go#L234-246) - Port binding logic
 
 **Features**:
-- ✅ Default bind to `127.0.0.1` (localhost only)
-- ✅ Configurable via `DEBUG_BIND_ADDRESS` environment variable
-- ✅ Security warnings when set to `0.0.0.0`
-- ✅ Clear logging for debug mode activation
+- [x] Default bind to `127.0.0.1` (localhost only)
+- [x] Configurable via `DEBUG_BIND_ADDRESS` environment variable
+- [x] Security warnings when set to `0.0.0.0`
+- [x] Clear logging for debug mode activation
 
 **Configuration**:
 ```yaml
@@ -69,19 +73,19 @@ environment:
 - Clear warnings when configured insecurely
 - Well-documented security implications
 
-**Verification**: Test script at [tests/e2e/test-debug-mode.sh](tests/e2e/test-debug-mode.sh)
+**Verification**: Test script at [tests/e2e/test-debug-mode.sh](../../tests/e2e/test-debug-mode.sh)
 
 ---
 
-### ✅ 3. Network Lifecycle Management (COMPLETE)
+### [x] 3. Network Lifecycle Management (COMPLETE)
 
-**Implementation**: [pkg/provider/docker_provider.go](pkg/provider/docker_provider.go#L484-531)
+**Implementation**: [pkg/provider/docker_provider.go](../../pkg/provider/docker_provider.go#L484-531)
 
 **Features**:
-- ✅ Per-function networks labeled for tracking
-- ✅ Gateway auto-connects to function networks
-- ✅ Networks cleaned up on function deletion when unused
-- ✅ Orphaned network detection and cleanup scripts
+- [x] Per-function networks labeled for tracking
+- [x] Gateway auto-connects to function networks
+- [x] Networks cleaned up on function deletion when unused
+- [x] Orphaned network detection and cleanup scripts
 
 **Network Labels**:
 ```go
@@ -90,8 +94,8 @@ LabelNetworkFunction: deployment.Service
 ```
 
 **Cleanup Scripts**:
-- Bash: [scripts/cleanup-networks.sh](scripts/cleanup-networks.sh)
-- PowerShell: [scripts/cleanup-networks.ps1](scripts/cleanup-networks.ps1)
+- Bash: [scripts/cleanup-networks.sh](../../scripts/cleanup-networks.sh)
+- PowerShell: [scripts/cleanup-networks.ps1](../../scripts/cleanup-networks.ps1)
 
 **Usage**:
 ```bash
@@ -107,35 +111,35 @@ DRY_RUN=true ./scripts/cleanup-networks.sh
 - Automated cleanup prevents network accumulation
 - Safe handling of gateway connections
 
-**Verification**: Test script at [tests/e2e/test-network-isolation.sh](tests/e2e/test-network-isolation.sh)
+**Verification**: Test script at [tests/e2e/test-network-isolation.sh](../../tests/e2e/test-network-isolation.sh)
 
 ---
 
-### ✅ 4. Operational Hardening (MOSTLY COMPLETE)
+### [x] 4. Operational Hardening (MOSTLY COMPLETE)
 
 #### Completed Items:
 
 **Backup & Restore Scripts**:
-- ✅ [scripts/backup-db.sh](scripts/backup-db.sh) - Bash backup script
-- ✅ [scripts/backup-db.ps1](scripts/backup-db.ps1) - PowerShell backup script
-- ✅ [scripts/restore-db.sh](scripts/restore-db.sh) - Bash restore script
-- ✅ [scripts/restore-db.ps1](scripts/restore-db.ps1) - PowerShell restore script
+- [x] [scripts/backup-db.sh](../../scripts/backup-db.sh) - Bash backup script
+- [x] [scripts/backup-db.ps1](../../scripts/backup-db.ps1) - PowerShell backup script
+- [x] [scripts/restore-db.sh](../../scripts/restore-db.sh) - Bash restore script
+- [x] [scripts/restore-db.ps1](../../scripts/restore-db.ps1) - PowerShell restore script
 
 **Monitoring & Alerting**:
-- ✅ Prometheus metrics endpoint (port 9090)
-- ✅ Example alert rules: [docs/monitoring/prometheus-alerts.yml](docs/monitoring/prometheus-alerts.yml)
-- ✅ Alert rules cover: Gateway down, high error rate, function failures, secret access failures
+- [x] Prometheus metrics endpoint (port 9090)
+- [x] Example alert rules: [docs/monitoring/prometheus-alerts.yml](../../docs/monitoring/prometheus-alerts.yml)
+- [x] Alert rules cover: Gateway down, high error rate, function failures, secret access failures
 
 **Documentation**:
-- ✅ Deployment guide updated with reverse proxy examples
-- ✅ Rate limiting strategy documented
-- ✅ TLS/HTTPS configuration guidance
-- ✅ Backup/restore procedures documented
+- [x] Deployment guide updated with reverse proxy examples
+- [x] Rate limiting strategy documented
+- [x] TLS/HTTPS configuration guidance
+- [x] Backup/restore procedures documented
 
 #### Remaining Items:
 
-- ⚠️ Health check metrics enhancements (planned)
-- ⚠️ Example Grafana dashboard (planned)
+- [!] Health check metrics enhancements (planned)
+- [!] Example Grafana dashboard (planned)
 
 **Usage**:
 ```bash
@@ -158,12 +162,12 @@ DRY_RUN=true ./scripts/cleanup-networks.sh
 
 | Test | File | Description | Status |
 |------|------|-------------|--------|
-| OpenFaaS Compatibility | [openfaas-compatibility-test.sh](tests/e2e/openfaas-compatibility-test.sh) | 25 tests for API compatibility | ✅ Complete |
-| Secrets Workflow | [test-secrets.sh](tests/e2e/test-secrets.sh) | 9 tests for secret management | ✅ Complete |
-| Security Hardening | [test-security.sh](tests/e2e/test-security.sh) | Verify CapDrop, no-new-privileges, auth | ✅ Complete |
-| Network Isolation | [test-network-isolation.sh](tests/e2e/test-network-isolation.sh) | Verify per-function network isolation | ✅ Complete |
-| Debug Mode | [test-debug-mode.sh](tests/e2e/test-debug-mode.sh) | Verify debug port binding to localhost | ✅ Complete |
-| Upgrade Migration | [test-upgrade.sh](tests/e2e/test-upgrade.sh) | Verify v1.0 to v2.0 migration | ✅ Complete |
+| OpenFaaS Compatibility | [openfaas-compatibility-test.sh](../../tests/e2e/openfaas-compatibility-test.sh) | 25 tests for API compatibility | [x] Complete |
+| Secrets Workflow | [test-secrets.sh](../../tests/e2e/test-secrets.sh) | 9 tests for secret management | [x] Complete |
+| Security Hardening | [test-security.sh](../../tests/e2e/test-security.sh) | Verify CapDrop, no-new-privileges, auth | [x] Complete |
+| Network Isolation | [test-network-isolation.sh](../../tests/e2e/test-network-isolation.sh) | Verify per-function network isolation | [x] Complete |
+| Debug Mode | [test-debug-mode.sh](../../tests/e2e/test-debug-mode.sh) | Verify debug port binding to localhost | [x] Complete |
+| Upgrade Migration | [test-upgrade.sh](../../tests/e2e/test-upgrade.sh) | Verify v1.0 to v2.0 migration | [x] Complete |
 
 **Total E2E Tests**: 6 test suites covering all critical production scenarios
 
@@ -171,14 +175,14 @@ DRY_RUN=true ./scripts/cleanup-networks.sh
 
 ## Production Deployment Checklist
 
-### Database ✅
+### Database [x]
 - [x] Migration system implemented
 - [x] Automatic migration on startup
 - [x] Backup automation script
 - [x] Restore procedure documented
 - [x] Backup retention policy defined
 
-### Security ✅
+### Security [x]
 - [x] Debug ports bound to localhost by default
 - [x] Security warnings on insecure configuration
 - [x] Capability dropping (CapDrop: ALL)
@@ -187,7 +191,7 @@ DRY_RUN=true ./scripts/cleanup-networks.sh
 - [x] TLS/HTTPS configuration documented
 - [x] Rate limiting strategy documented
 
-### Networking ✅
+### Networking [x]
 - [x] Per-function network isolation
 - [x] Gateway auto-connect to function networks
 - [x] Network lifecycle documentation
@@ -202,7 +206,7 @@ DRY_RUN=true ./scripts/cleanup-networks.sh
 - [x] Deployment guide with reverse proxy
 - [x] Backup/restore documentation
 
-### Testing ✅
+### Testing [x]
 - [x] Unit tests (25 tests, >80% coverage)
 - [x] E2E compatibility tests (25 tests)
 - [x] Secrets workflow tests (9 tests)
@@ -219,7 +223,7 @@ DRY_RUN=true ./scripts/cleanup-networks.sh
 
 ### Default Security Posture
 
-✅ **Container Hardening**:
+[x] **Container Hardening**:
 ```json
 {
   "CapDrop": ["ALL"],
@@ -229,23 +233,23 @@ DRY_RUN=true ./scripts/cleanup-networks.sh
 }
 ```
 
-✅ **Debug Port Security**:
+[x] **Debug Port Security**:
 ```yaml
 # Secure default
 DEBUG_BIND_ADDRESS: 127.0.0.1  # Localhost only
 
 # Logs warning if changed to 0.0.0.0
-⚠️  DEBUG MODE: Function has debug ports exposed on ALL interfaces
-⚠️  This is a security risk in production
+[!]  DEBUG MODE: Function has debug ports exposed on ALL interfaces
+[!]  This is a security risk in production
 ```
 
-✅ **Secret Security**:
+[x] **Secret Security**:
 - Stored with 0400 permissions (owner read-only)
 - Mounted read-only into containers
 - Never exposed via API (only names returned)
 - Validated before deployment
 
-✅ **Network Isolation**:
+[x] **Network Isolation**:
 - Per-function networks (cannot communicate directly)
 - Gateway connects to each function network
 - Labeled for tracking and cleanup
@@ -255,23 +259,23 @@ DEBUG_BIND_ADDRESS: 127.0.0.1  # Localhost only
 ## Documentation Coverage
 
 ### Core Documentation
-- ✅ [README.md](README.md) - Project overview and quick start
-- ✅ [GETTING_STARTED.md](docs/GETTING_STARTED.md) - Step-by-step guide
-- ✅ [API.md](docs/API.md) - Complete API reference
-- ✅ [DEPLOYMENT.md](docs/DEPLOYMENT.md) - Production deployment guide
-- ✅ [ARCHITECTURE.md](docs/ARCHITECTURE.md) - System architecture
+- [x] [README.md](../../README.md) - Project overview and quick start
+- [x] [GETTING_STARTED.md](../GETTING_STARTED.md) - Step-by-step guide
+- [x] [API.md](../API.md) - Complete API reference
+- [x] [DEPLOYMENT.md](../DEPLOYMENT.md) - Production deployment guide
+- [x] [ARCHITECTURE.md](../ARCHITECTURE.md) - System architecture
 
 ### v2.0 Documentation
-- ✅ [V2_ENHANCEMENTS.md](docs/V2_ENHANCEMENTS.md) - New features guide
-- ✅ [SECRETS.md](docs/SECRETS.md) - Secrets management guide
-- ✅ [RELEASE_NOTES_V2.md](RELEASE_NOTES_V2.md) - Release highlights
-- ✅ [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md) - Production checklist
+- [x] [V2_ENHANCEMENTS.md](../V2_ENHANCEMENTS.md) - New features guide
+- [x] [SECRETS.md](../SECRETS.md) - Secrets management guide
+- [x] [RELEASE_NOTES_V2.md](RELEASE_NOTES_V2.md) - Release highlights
+- [x] [PRODUCTION_READINESS.md](../PRODUCTION_READINESS.md) - Production checklist
 
 ### Operational Documentation
-- ✅ [SECRETS_IMPLEMENTATION.md](SECRETS_IMPLEMENTATION.md) - Technical details
-- ✅ Backup/restore procedures in DEPLOYMENT.md
-- ✅ Monitoring/alerting examples in docs/monitoring/
-- ✅ Network lifecycle in V2_ENHANCEMENTS.md
+- [x] SECRETS_IMPLEMENTATION.md - Technical details (consolidated into ../SECRETS.md)
+- [x] Backup/restore procedures in DEPLOYMENT.md
+- [x] Monitoring/alerting examples in docs/monitoring/
+- [x] Network lifecycle in V2_ENHANCEMENTS.md
 
 **Total Documentation**: 11+ comprehensive guides
 
@@ -348,14 +352,14 @@ docker-compose up -d
 
 ### Verdict
 
-**✅ PRODUCTION READY** with minor enhancements planned
+**[x] PRODUCTION READY** with minor enhancements planned
 
 The platform is ready for production deployment with:
-- ✅ Complete security hardening
-- ✅ Safe database migrations
-- ✅ Comprehensive testing coverage
-- ✅ Operational scripts and documentation
-- ⚠️ Optional enhancements: Grafana dashboard, advanced health metrics
+- [x] Complete security hardening
+- [x] Safe database migrations
+- [x] Comprehensive testing coverage
+- [x] Operational scripts and documentation
+- [!] Optional enhancements: Grafana dashboard, advanced health metrics
 
 ---
 
@@ -371,14 +375,14 @@ The platform is ready for production deployment with:
 
 ## References
 
-- [Production Readiness Tracker](PRODUCTION_READINESS.md)
+- [Production Readiness Tracker](../PRODUCTION_READINESS.md)
 - [v2.0 Release Notes](RELEASE_NOTES_V2.md)
-- [Migration System](pkg/store/migrations.go)
-- [Debug Security](pkg/provider/docker_provider.go#L234-246)
-- [Network Lifecycle](pkg/provider/docker_provider.go#L484-531)
+- [Migration System](../../pkg/store/migrations.go)
+- [Debug Security](../../pkg/provider/docker_provider.go#L234-246)
+- [Network Lifecycle](../../pkg/provider/docker_provider.go#L484-531)
 
 ---
 
 **Validation Date**: December 24, 2024
 **Version**: 2.0.0
-**Status**: ✅ Production Ready
+**Status**: [x] Production Ready

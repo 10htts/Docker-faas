@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,22 +15,21 @@ import (
 
 	"github.com/docker-faas/docker-faas/pkg/metrics"
 	"github.com/docker-faas/docker-faas/pkg/provider"
-	"github.com/docker-faas/docker-faas/pkg/router"
 	"github.com/docker-faas/docker-faas/pkg/store"
 	"github.com/docker-faas/docker-faas/pkg/types"
 )
 
 // Gateway handles OpenFaaS API requests
 type Gateway struct {
-	store    *store.Store
-	provider *provider.DockerProvider
-	router   *router.Router
+	store    Store
+	provider Provider
+	router   Router
 	logger   *logrus.Logger
 	network  string
 }
 
 // NewGateway creates a new gateway instance
-func NewGateway(store *store.Store, provider *provider.DockerProvider, router *router.Router, logger *logrus.Logger, network string) *Gateway {
+func NewGateway(store Store, provider Provider, router Router, logger *logrus.Logger, network string) *Gateway {
 	return &Gateway{
 		store:    store,
 		provider: provider,
@@ -131,6 +131,10 @@ func (g *Gateway) HandleFunctionContainers(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "Function name is required", http.StatusBadRequest)
 		return
 	}
+	if err := validateFunctionName(functionName); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	containers, err := g.provider.GetFunctionContainers(r.Context(), functionName)
 	if err != nil {
@@ -152,6 +156,10 @@ func (g *Gateway) HandleDeployFunction(w http.ResponseWriter, r *http.Request) {
 
 	if deployment.Service == "" || deployment.Image == "" {
 		http.Error(w, "Service name and image are required", http.StatusBadRequest)
+		return
+	}
+	if err := validateFunctionName(deployment.Service); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -180,13 +188,29 @@ func (g *Gateway) HandleDeployFunction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Store function metadata
+	envVars, err := store.EncodeMap(deployment.EnvVars)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode envVars: %v", err), http.StatusBadRequest)
+		return
+	}
+	labels, err := store.EncodeMap(deployment.Labels)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode labels: %v", err), http.StatusBadRequest)
+		return
+	}
+	secretsJSON, err := store.EncodeSlice(deployment.Secrets)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode secrets: %v", err), http.StatusBadRequest)
+		return
+	}
+
 	metadata := &types.FunctionMetadata{
 		Name:       deployment.Service,
 		Image:      deployment.Image,
 		EnvProcess: deployment.EnvProcess,
-		EnvVars:    store.EncodeMap(deployment.EnvVars),
-		Labels:     store.EncodeMap(deployment.Labels),
-		Secrets:    store.EncodeSlice(deployment.Secrets),
+		EnvVars:    envVars,
+		Labels:     labels,
+		Secrets:    secretsJSON,
 		Network:    deployment.Network,
 		Replicas:   replicas,
 		ReadOnly:   deployment.ReadOnlyRootFilesystem,
@@ -194,12 +218,20 @@ func (g *Gateway) HandleDeployFunction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if deployment.Limits != nil {
-		limitsJSON, _ := json.Marshal(deployment.Limits)
+		limitsJSON, err := json.Marshal(deployment.Limits)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to encode limits: %v", err), http.StatusBadRequest)
+			return
+		}
 		metadata.Limits = string(limitsJSON)
 	}
 
 	if deployment.Requests != nil {
-		requestsJSON, _ := json.Marshal(deployment.Requests)
+		requestsJSON, err := json.Marshal(deployment.Requests)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to encode requests: %v", err), http.StatusBadRequest)
+			return
+		}
 		metadata.Requests = string(requestsJSON)
 	}
 
@@ -232,6 +264,10 @@ func (g *Gateway) HandleUpdateFunction(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Service name and image are required", http.StatusBadRequest)
 		return
 	}
+	if err := validateFunctionName(deployment.Service); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	g.logger.Infof("Updating function: %s (image: %s)", deployment.Service, deployment.Image)
 
@@ -261,20 +297,44 @@ func (g *Gateway) HandleUpdateFunction(w http.ResponseWriter, r *http.Request) {
 	// Update function metadata
 	existing.Image = deployment.Image
 	existing.EnvProcess = deployment.EnvProcess
-	existing.EnvVars = store.EncodeMap(deployment.EnvVars)
-	existing.Labels = store.EncodeMap(deployment.Labels)
-	existing.Secrets = store.EncodeSlice(deployment.Secrets)
+	envVars, err := store.EncodeMap(deployment.EnvVars)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode envVars: %v", err), http.StatusBadRequest)
+		return
+	}
+	labels, err := store.EncodeMap(deployment.Labels)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode labels: %v", err), http.StatusBadRequest)
+		return
+	}
+	secretsJSON, err := store.EncodeSlice(deployment.Secrets)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode secrets: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	existing.EnvVars = envVars
+	existing.Labels = labels
+	existing.Secrets = secretsJSON
 	existing.Network = deployment.Network
 	existing.ReadOnly = deployment.ReadOnlyRootFilesystem
 	existing.Debug = deployment.Debug
 
 	if deployment.Limits != nil {
-		limitsJSON, _ := json.Marshal(deployment.Limits)
+		limitsJSON, err := json.Marshal(deployment.Limits)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to encode limits: %v", err), http.StatusBadRequest)
+			return
+		}
 		existing.Limits = string(limitsJSON)
 	}
 
 	if deployment.Requests != nil {
-		requestsJSON, _ := json.Marshal(deployment.Requests)
+		requestsJSON, err := json.Marshal(deployment.Requests)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to encode requests: %v", err), http.StatusBadRequest)
+			return
+		}
 		existing.Requests = string(requestsJSON)
 	}
 
@@ -305,6 +365,10 @@ func (g *Gateway) HandleDeleteFunction(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	functionName = normalizeFunctionName(functionName)
+	if err := validateFunctionName(functionName); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if functionName == "" {
 		http.Error(w, "functionName parameter is required", http.StatusBadRequest)
 		return
@@ -381,6 +445,10 @@ func (g *Gateway) HandleScaleFunction(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	scaleReq.ServiceName = normalizeFunctionName(scaleReq.ServiceName)
+	if err := validateFunctionName(scaleReq.ServiceName); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	if scaleReq.ServiceName == "" {
 		http.Error(w, "serviceName is required", http.StatusBadRequest)
@@ -442,6 +510,10 @@ func (g *Gateway) HandleGetLogs(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "name parameter is required", http.StatusBadRequest)
 		return
 	}
+	if err := validateFunctionName(functionName); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	tail := 100
 	if tailStr := r.URL.Query().Get("tail"); tailStr != "" {
@@ -469,6 +541,10 @@ func (g *Gateway) HandleInvokeFunction(w http.ResponseWriter, r *http.Request) {
 
 	if functionName == "" {
 		http.Error(w, "Function name is required", http.StatusBadRequest)
+		return
+	}
+	if err := validateFunctionName(functionName); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -534,8 +610,57 @@ func normalizeFunctionName(name string) string {
 
 // HandleHealthz handles GET /healthz
 func (g *Gateway) HandleHealthz(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	checks := map[string]string{}
+	ok := true
+
+	if err := g.store.HealthCheck(ctx); err != nil {
+		checks["database"] = err.Error()
+		ok = false
+	} else {
+		checks["database"] = "ok"
+	}
+
+	if err := g.provider.HealthCheck(ctx); err != nil {
+		checks["docker"] = err.Error()
+		ok = false
+	} else {
+		checks["docker"] = "ok"
+	}
+
+	if err := g.provider.CheckNetwork(ctx); err != nil {
+		checks["network"] = err.Error()
+		ok = false
+	} else {
+		checks["network"] = "ok"
+	}
+
+	acceptsJSON := strings.Contains(r.Header.Get("Accept"), "application/json")
+	if ok {
+		if acceptsJSON {
+			g.writeJSON(w, http.StatusOK, map[string]interface{}{
+				"status": "ok",
+				"checks": checks,
+			})
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+		return
+	}
+
+	if acceptsJSON {
+		g.writeJSON(w, http.StatusServiceUnavailable, map[string]interface{}{
+			"status": "unhealthy",
+			"checks": checks,
+		})
+		return
+	}
+
+	w.WriteHeader(http.StatusServiceUnavailable)
+	w.Write([]byte("Unhealthy"))
 }
 
 // writeJSON writes a JSON response

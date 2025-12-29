@@ -15,6 +15,7 @@ import (
 
 	"github.com/docker-faas/docker-faas/pkg/config"
 	"github.com/docker-faas/docker-faas/pkg/gateway"
+	"github.com/docker-faas/docker-faas/pkg/metrics"
 	"github.com/docker-faas/docker-faas/pkg/middleware"
 	"github.com/docker-faas/docker-faas/pkg/provider"
 	"github.com/docker-faas/docker-faas/pkg/router"
@@ -39,6 +40,7 @@ func main() {
 
 	logger.Info("Starting Docker FaaS Gateway...")
 	logger.Infof("Configuration: port=%s, network=%s, auth=%v", cfg.GatewayPort, cfg.FunctionsNetwork, cfg.AuthEnabled)
+	metrics.RecordGatewayRestart()
 
 	// Initialize store
 	st, err := store.NewStore(cfg.StateDBPath)
@@ -74,6 +76,7 @@ func main() {
 	r.HandleFunc("/system/function/{name}/containers", gw.HandleFunctionContainers).Methods("GET")
 	r.HandleFunc("/system/scale-function/{name}", gw.HandleScaleFunction).Methods("POST")
 	r.HandleFunc("/system/logs", gw.HandleGetLogs).Methods("GET")
+	r.HandleFunc("/system/function-async/{name}", gw.HandleInvokeFunctionAsync).Methods("POST", "GET", "PUT", "DELETE", "PATCH")
 
 	// Secret management endpoints
 	r.HandleFunc("/system/secrets", gw.HandleCreateSecret).Methods("POST")
@@ -84,14 +87,16 @@ func main() {
 
 	// Function invocation
 	r.HandleFunc("/function/{name}", gw.HandleInvokeFunction).Methods("POST", "GET", "PUT", "DELETE", "PATCH")
+	r.HandleFunc("/async-function/{name}", gw.HandleInvokeFunctionAsync).Methods("POST", "GET", "PUT", "DELETE", "PATCH")
 
 	// Health check
 	r.HandleFunc("/healthz", gw.HandleHealthz).Methods("GET")
 
 	// Apply middleware
-	corsMiddleware := middleware.NewCORSMiddleware([]string{"*"}) // Allow all origins for development
+	corsMiddleware := middleware.NewCORSMiddleware(cfg.CORSAllowedOrigins)
 	loggingMiddleware := middleware.NewLoggingMiddleware(logger)
-	authMiddleware := middleware.NewBasicAuthMiddleware(cfg.AuthUser, cfg.AuthPassword, cfg.AuthEnabled, logger)
+	authRateLimiter := middleware.NewAuthRateLimiter(cfg.AuthRateLimit, cfg.AuthRateWindow)
+	authMiddleware := middleware.NewBasicAuthMiddleware(cfg.AuthUser, cfg.AuthPassword, cfg.AuthEnabled, cfg.RequireAuthForFunctions, authRateLimiter, logger)
 
 	// Create separate router for UI (no auth)
 	uiRouter := mux.NewRouter()

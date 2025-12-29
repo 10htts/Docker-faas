@@ -11,9 +11,6 @@ type CORSMiddleware struct {
 
 // NewCORSMiddleware creates a new CORS middleware
 func NewCORSMiddleware(allowedOrigins []string) *CORSMiddleware {
-	if len(allowedOrigins) == 0 {
-		allowedOrigins = []string{"*"}
-	}
 	return &CORSMiddleware{
 		allowedOrigins: allowedOrigins,
 	}

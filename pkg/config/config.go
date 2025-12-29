@@ -3,39 +3,44 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
 // Config holds application configuration
 type Config struct {
 	// Gateway settings
-	GatewayPort      string
-	ReadTimeout      time.Duration
-	WriteTimeout     time.Duration
-	ExecTimeout      time.Duration
+	GatewayPort        string
+	ReadTimeout        time.Duration
+	WriteTimeout       time.Duration
+	ExecTimeout        time.Duration
+	CORSAllowedOrigins []string
 
 	// Docker settings
 	DockerHost       string
 	FunctionsNetwork string
 
 	// Authentication
-	AuthEnabled      bool
-	AuthUser         string
-	AuthPassword     string
+	AuthEnabled             bool
+	AuthUser                string
+	AuthPassword            string
+	RequireAuthForFunctions bool
+	AuthRateLimit           int
+	AuthRateWindow          time.Duration
 
 	// Database
-	StateDBPath      string
+	StateDBPath string
 
 	// Metrics
-	MetricsEnabled   bool
-	MetricsPort      string
+	MetricsEnabled bool
+	MetricsPort    string
 
 	// Logging
-	LogLevel         string
+	LogLevel string
 
 	// Defaults
-	DefaultReplicas  int
-	MaxReplicas      int
+	DefaultReplicas int
+	MaxReplicas     int
 
 	// Debug settings
 	DebugBindAddress string
@@ -43,23 +48,34 @@ type Config struct {
 
 // LoadConfig loads configuration from environment variables
 func LoadConfig() *Config {
+	authEnabled := getBoolEnv("AUTH_ENABLED", true)
+	logLevel := getEnv("LOG_LEVEL", "info")
+	corsAllowedOrigins := getCSVEnv("CORS_ALLOWED_ORIGINS")
+	if len(corsAllowedOrigins) == 0 && !authEnabled {
+		corsAllowedOrigins = []string{"*"}
+	}
+
 	return &Config{
-		GatewayPort:      getEnv("GATEWAY_PORT", "8080"),
-		ReadTimeout:      getDurationEnv("READ_TIMEOUT", 60*time.Second),
-		WriteTimeout:     getDurationEnv("WRITE_TIMEOUT", 60*time.Second),
-		ExecTimeout:      getDurationEnv("EXEC_TIMEOUT", 60*time.Second),
-		DockerHost:       getEnv("DOCKER_HOST", ""),
-		FunctionsNetwork: getEnv("FUNCTIONS_NETWORK", "docker-faas-net"),
-		AuthEnabled:      getBoolEnv("AUTH_ENABLED", true),
-		AuthUser:         getEnv("AUTH_USER", "admin"),
-		AuthPassword:     getEnv("AUTH_PASSWORD", "admin"),
-		StateDBPath:      getEnv("STATE_DB_PATH", "docker-faas.db"),
-		MetricsEnabled:   getBoolEnv("METRICS_ENABLED", true),
-		MetricsPort:      getEnv("METRICS_PORT", "9090"),
-		LogLevel:         getEnv("LOG_LEVEL", "info"),
-		DefaultReplicas:  getIntEnv("DEFAULT_REPLICAS", 1),
-		MaxReplicas:      getIntEnv("MAX_REPLICAS", 10),
-		DebugBindAddress: getEnv("DEBUG_BIND_ADDRESS", "127.0.0.1"),
+		GatewayPort:             getEnv("GATEWAY_PORT", "8080"),
+		ReadTimeout:             getDurationEnv("READ_TIMEOUT", 60*time.Second),
+		WriteTimeout:            getDurationEnv("WRITE_TIMEOUT", 60*time.Second),
+		ExecTimeout:             getDurationEnv("EXEC_TIMEOUT", 60*time.Second),
+		CORSAllowedOrigins:      corsAllowedOrigins,
+		DockerHost:              getEnv("DOCKER_HOST", ""),
+		FunctionsNetwork:        getEnv("FUNCTIONS_NETWORK", "docker-faas-net"),
+		AuthEnabled:             authEnabled,
+		AuthUser:                getEnv("AUTH_USER", "admin"),
+		AuthPassword:            getEnv("AUTH_PASSWORD", "admin"),
+		RequireAuthForFunctions: getBoolEnv("REQUIRE_AUTH_FOR_FUNCTIONS", true),
+		AuthRateLimit:           getIntEnv("AUTH_RATE_LIMIT", 10),
+		AuthRateWindow:          getDurationEnv("AUTH_RATE_WINDOW", time.Minute),
+		StateDBPath:             getEnv("STATE_DB_PATH", "docker-faas.db"),
+		MetricsEnabled:          getBoolEnv("METRICS_ENABLED", true),
+		MetricsPort:             getEnv("METRICS_PORT", "9090"),
+		LogLevel:                logLevel,
+		DefaultReplicas:         getIntEnv("DEFAULT_REPLICAS", 1),
+		MaxReplicas:             getIntEnv("MAX_REPLICAS", 10),
+		DebugBindAddress:        getEnv("DEBUG_BIND_ADDRESS", "127.0.0.1"),
 	}
 }
 
@@ -69,6 +85,23 @@ func getEnv(key, defaultValue string) string {
 		return defaultValue
 	}
 	return value
+}
+
+func getCSVEnv(key string) []string {
+	value := os.Getenv(key)
+	if value == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		values = append(values, trimmed)
+	}
+	return values
 }
 
 func getBoolEnv(key string, defaultValue bool) bool {

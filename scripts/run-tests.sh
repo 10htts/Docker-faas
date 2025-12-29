@@ -6,6 +6,7 @@ AUTH_USER="${AUTH_USER:-${DOCKER_FAAS_USER:-admin}}"
 AUTH_PASSWORD="${AUTH_PASSWORD:-${DOCKER_FAAS_PASSWORD:-admin}}"
 SKIP_E2E="${SKIP_E2E:-}"
 SKIP_COMPAT="${SKIP_COMPAT:-}"
+SKIP_FAAS_CLI="${SKIP_FAAS_CLI:-}"
 SKIP_UPGRADE="${SKIP_UPGRADE:-}"
 
 printf "Running unit tests...\n"
@@ -44,6 +45,14 @@ if [[ -z "${SKIP_COMPAT}" ]]; then
     run_e2e openfaas-compatibility-test.sh
   else
     printf "faas-cli not found; skipping openfaas-compatibility-test.sh\n"
+  fi
+fi
+
+if [[ -z "${SKIP_FAAS_CLI}" ]]; then
+  if command -v faas-cli >/dev/null 2>&1; then
+    run_e2e test-faas-cli-workflow.sh
+  else
+    printf "faas-cli not found; skipping test-faas-cli-workflow.sh\n"
   fi
 fi
 

@@ -1,6 +1,7 @@
 param(
   [switch]$SkipE2E,
   [switch]$SkipCompatibility,
+  [switch]$SkipFaasCli,
   [switch]$SkipUpgrade,
   [string]$Gateway = "http://localhost:8080",
   [string]$AuthUser,
@@ -62,12 +63,14 @@ $tests = @(
   "test-debug-mode.sh",
   "test-secrets.sh",
   "test-upgrade.sh",
-  "openfaas-compatibility-test.sh"
+  "openfaas-compatibility-test.sh",
+  "test-faas-cli-workflow.sh"
 )
 
 foreach ($test in $tests) {
   if ($test -eq "test-upgrade.sh" -and $SkipUpgrade) { continue }
   if ($test -eq "openfaas-compatibility-test.sh" -and $SkipCompatibility) { continue }
+  if ($test -eq "test-faas-cli-workflow.sh" -and $SkipFaasCli) { continue }
 
   if ($test -eq "test-upgrade.sh") {
     & $bash -lc "$pathPrefix command -v sqlite3 >/dev/null 2>&1"
@@ -77,10 +80,10 @@ foreach ($test in $tests) {
     }
   }
 
-  if ($test -eq "openfaas-compatibility-test.sh") {
+  if ($test -eq "openfaas-compatibility-test.sh" -or $test -eq "test-faas-cli-workflow.sh") {
     & $bash -lc "$pathPrefix command -v faas-cli >/dev/null 2>&1"
     if ($LASTEXITCODE -ne 0) {
-      Write-Warning "faas-cli not found; skipping openfaas-compatibility-test.sh"
+      Write-Warning "faas-cli not found; skipping $test"
       continue
     }
   }

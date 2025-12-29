@@ -1,5 +1,9 @@
 # Docker-FaaS Specification (OpenFaaS-Compatible, Docker-Based)
 
+> Archived document. This snapshot is retained for historical context and may be outdated.
+> For current documentation, see ../README.md.
+
+
 This document defines the requirements for a new project that provides a Docker-native FaaS runtime compatible with `faas-cli`. The goal is a simple, reliable, debuggable system that runs on Docker (no Kubernetes required) but can migrate to Kubernetes later.
 
 ---
@@ -34,7 +38,7 @@ Minimum required endpoints:
 - `PUT /system/functions` (update existing)
 - `DELETE /system/functions` (remove)
 - `POST /system/scale-function` (scale)
-- `GET /system/logs?name=...` (logs)
+- `GET /system/logs+name=...` (logs)
 - `POST /function/{name}` (invoke function)
 - `GET /healthz` (gateway health)
 
@@ -228,7 +232,7 @@ faas-cli scale http-request --gateway http://localhost:15012 --replicas 3
 
 ## 15. Open Questions
 
-- Do we require function image builds in this platform, or only deploy prebuilt images?
-- Should functions run with strict resource limits by default?
-- Do we need scale-to-zero now, or later?
-- What level of security is required for function invocation?
+- Do we require function image builds in this platform, or only deploy prebuilt images+
+- Should functions run with strict resource limits by default+
+- Do we need scale-to-zero now, or later+
+- What level of security is required for function invocation+

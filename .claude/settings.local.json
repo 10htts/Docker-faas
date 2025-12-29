@@ -10,7 +10,13 @@
       "Bash(docker-compose build:*)",
       "Bash(docker logs:*)",
       "Bash(docker-compose up:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(ls:*)",
+      "Bash(dir:*)",
+      "Bash(grep:*)",
+      "Bash(done)",
+      "Bash(python scripts/check-doc-links.py:*)",
+      "Bash(go tool cover:*)"
     ]
   }
 }

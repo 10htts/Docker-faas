@@ -61,6 +61,10 @@ List all deployed functions.
 
 Build a function image from source (zip or Git) and optionally deploy it.
 
+Security limits:
+- Git URLs must use http/https/git/ssh and may not resolve to localhost or private IPs.
+- Zip uploads are capped at 2000 entries, 100MB per file, and 500MB total uncompressed size.
+
 **JSON (Git) Example:**
 ```json
 {
@@ -178,7 +182,7 @@ Delete a function.
 
 **Example:**
 ```bash
-DELETE /system/functions?functionName=my-function
+DELETE /system/functions+functionName=my-function
 ```
 
 **Response:** `202 Accepted`
@@ -207,7 +211,7 @@ Get logs from a function.
 
 **Example:**
 ```bash
-GET /system/logs?name=my-function&tail=50
+GET /system/logs+name=my-function&tail=50
 ```
 
 **Response:** Plain text logs
@@ -215,6 +219,8 @@ GET /system/logs?name=my-function&tail=50
 ### POST /function/{name}
 
 Invoke a function.
+
+Authentication: `/function/*` requires Basic Auth by default. Set `REQUIRE_AUTH_FOR_FUNCTIONS=false` to allow unauthenticated invocation for OpenFaaS compatibility.
 
 **Request Body:** Function input (any content type)
 
@@ -234,11 +240,38 @@ curl -X POST http://localhost:8080/function/my-function \
   -u admin:admin
 ```
 
+### POST /async-function/{name}
+
+Invoke a function asynchronously (fire-and-forget).
+
+**Response:** `202 Accepted`
+
+**Headers:**
+- `X-Call-Id` - Call identifier for tracing
+
+**Example:**
+```bash
+curl -X POST http://localhost:8080/async-function/my-function \
+  -u admin:admin \
+  -d "Hello World"
+```
+
+### POST /system/function-async/{name}
+
+Alias for async invocation.
+
+**Response:** `202 Accepted`
+
 ### GET /healthz
 
 Health check endpoint (no authentication required).
 
-**Response:** `200 OK` with body "OK"
+Checks:
+- Docker connectivity
+- Database connectivity
+- Base network existence
+
+**Response:** `200 OK` with body "OK" when healthy, `503` when unhealthy.
 
 ### GET /metrics
 
@@ -368,6 +401,6 @@ curl -X POST http://localhost:8080/system/scale-function/my-function \
 ### Get Function Logs
 
 ```bash
-curl http://localhost:8080/system/logs?name=my-function&tail=20 \
+curl http://localhost:8080/system/logs+name=my-function&tail=20 \
   -u admin:admin
 ```

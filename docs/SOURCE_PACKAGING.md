@@ -197,10 +197,10 @@ The build worker runs on the same host as the gateway and needs:
 
 ## FAQ
 
-Q: Do users need Docker installed?
+Q: Do users need Docker installed+
 A: No. The builder runs on the gateway host and produces the image internally.
 
-Q: What if no Dockerfile and no manifest?
+Q: What if no Dockerfile and no manifest+
 A: The builder may attempt auto-detection, but this is not recommended for production. Provide a Dockerfile or manifest to avoid guesswork.
 
 ## Examples and Templates
@@ -241,6 +241,12 @@ The UI emits a proposed payload for a future `/system/builds` endpoint. This is 
   }
 }
 ```
+
+### Security Limits
+
+- Git URLs must use http/https/git/ssh and may not resolve to localhost or private IPs.
+- Zip uploads are capped at 2000 entries, 100MB per file, and 500MB total uncompressed size.
+- Zip entries containing symlinks or path traversal are rejected.
 
 ### Inline Files (Editor)
 ```json
