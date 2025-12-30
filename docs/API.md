@@ -24,11 +24,11 @@ Get system information.
 {
   "provider": {
     "name": "docker-faas",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "orchestration": "docker"
   },
   "version": {
-    "release": "1.0.0",
+    "release": "2.0.0",
     "sha": "dev"
   },
   "arch": "x86_64"

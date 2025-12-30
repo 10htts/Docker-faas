@@ -77,9 +77,9 @@ func (g *Gateway) HandleSystemInfo(w http.ResponseWriter, r *http.Request) {
 		Arch: "x86_64",
 	}
 	info.Provider.Name = "docker-faas"
-	info.Provider.Version = "1.0.0"
+	info.Provider.Version = "2.0.0"
 	info.Provider.Orchestration = "docker"
-	info.Version.Release = "1.0.0"
+	info.Version.Release = "2.0.0"
 	info.Version.SHA = "dev"
 
 	g.writeJSON(w, http.StatusOK, info)
