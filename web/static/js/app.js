@@ -22,6 +22,10 @@ class DockerFaaSApp {
         this.buildHistoryLimit = 50;
         this.importPlan = null;
         this.currentBuildId = null;
+        this.token = '';
+        this.tokenExpiresAt = '';
+        this.buildStreamAbort = null;
+        this.buildStreamBuffer = '';
         this.defaultGatewayUrl = this.getDefaultGatewayUrl();
         this.loadingCount = 0;
         this.sessionTimeoutMs = 30 * 60 * 1000;
@@ -127,6 +131,7 @@ class DockerFaaSApp {
         // Builds and metrics
         document.getElementById('clear-build-history-btn')?.addEventListener('click', () => this.clearBuildHistory());
         document.getElementById('refresh-metrics-btn')?.addEventListener('click', () => this.loadMetrics());
+        document.getElementById('refresh-settings-btn')?.addEventListener('click', () => this.loadSettings());
     }
 
     getDefaultGatewayUrl() {
@@ -160,6 +165,8 @@ class DockerFaaSApp {
             }
             this.gatewayUrl = this.normalizeGatewayUrl(data.gatewayUrl || this.defaultGatewayUrl);
             this.username = data.username || '';
+            this.token = data.token || '';
+            this.tokenExpiresAt = data.tokenExpiresAt || '';
 
             const gatewayInput = document.getElementById('gateway-url');
             if (gatewayInput) {
@@ -168,6 +175,17 @@ class DockerFaaSApp {
             const usernameInput = document.getElementById('username');
             if (usernameInput) {
                 usernameInput.value = this.username;
+            }
+
+            if (this.token && !this.isTokenExpired(this.tokenExpiresAt)) {
+                this.authenticated = true;
+                this.showApp();
+                this.loadOverview();
+                this.refreshBuildHistory();
+            } else if (this.token) {
+                this.token = '';
+                this.tokenExpiresAt = '';
+                this.saveSession();
             }
         }
     }
@@ -183,22 +201,38 @@ class DockerFaaSApp {
             return;
         }
 
-        // Test connection
         try {
-            const response = await this.api('/system/info');
-            if (response.ok) {
-                this.authenticated = true;
-                this.saveSession();
-                const passwordInput = document.getElementById('password');
-                if (passwordInput) {
-                    passwordInput.value = '';
-                }
-                this.showApp();
-                this.loadOverview();
-                this.showToast('Connected successfully', 'success');
-            } else {
-                this.showError('login-error', 'Authentication failed');
+            const response = await this.api('/auth/login', {
+                method: 'POST',
+                body: JSON.stringify({ username: this.username, password: this.password }),
+                skipAuth: true
+            });
+            if (!response.ok) {
+                const errorText = await response.text();
+                this.showError('login-error', errorText || 'Authentication failed');
+                return;
             }
+
+            const data = await response.json();
+            this.token = data.token || '';
+            this.tokenExpiresAt = data.expiresAt || '';
+            if (!this.token) {
+                this.showError('login-error', 'Authentication failed');
+                return;
+            }
+            this.authenticated = true;
+            this.saveSession();
+
+            const passwordInput = document.getElementById('password');
+            if (passwordInput) {
+                passwordInput.value = '';
+            }
+            this.password = '';
+            this.showApp();
+            this.loadOverview();
+            this.refreshBuildHistory();
+            this.startBuildStream();
+            this.showToast('Connected successfully', 'success');
         } catch (error) {
             this.showError('login-error', `Connection failed: ${error.message}`);
         }
@@ -208,6 +242,17 @@ class DockerFaaSApp {
         const silent = options.silent === true;
         this.authenticated = false;
         this.password = '';
+        const token = this.token;
+        if (token) {
+            this.api('/auth/logout', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+                skipAuth: true,
+                showLoading: false
+            }).catch(() => {});
+        }
+        this.token = '';
+        this.tokenExpiresAt = '';
         this.saveSession();
         this.hideApp();
         if (!silent) {
@@ -221,6 +266,7 @@ class DockerFaaSApp {
         document.getElementById('header-gateway-url').textContent = this.gatewayUrl;
         this.startAutoRefresh();
         this.setupSessionTimeout();
+        this.startBuildStream();
     }
 
     hideApp() {
@@ -228,6 +274,7 @@ class DockerFaaSApp {
         document.getElementById('login-screen').classList.add('active');
         this.stopAutoRefresh();
         this.clearSessionTimeout();
+        this.stopBuildStream();
         this.resetLoadingState();
     }
 
@@ -237,11 +284,18 @@ class DockerFaaSApp {
             this.resetInactivityTimer();
         }
         const url = `${this.gatewayUrl}${endpoint}`;
-        const { raw, showLoading, ...fetchOptions } = options;
+        const { raw, showLoading, skipAuth, ...fetchOptions } = options;
         const headers = {
-            'Authorization': 'Basic ' + btoa(`${this.username}:${this.password}`),
             ...fetchOptions.headers
         };
+
+        if (!skipAuth) {
+            if (this.token) {
+                headers['Authorization'] = `Bearer ${this.token}`;
+            } else if (this.username && this.password) {
+                headers['Authorization'] = 'Basic ' + btoa(`${this.username}:${this.password}`);
+            }
+        }
 
         const hasContentType = Object.keys(headers).some((key) => key.toLowerCase() === 'content-type');
         if (!raw && fetchOptions.body !== undefined && !hasContentType) {
@@ -307,6 +361,9 @@ class DockerFaaSApp {
             case 'metrics':
                 this.loadMetrics();
                 break;
+            case 'settings':
+                this.loadSettings();
+                break;
         }
     }
 
@@ -341,7 +398,9 @@ class DockerFaaSApp {
     saveSession() {
         localStorage.setItem('dockerfaas-session', JSON.stringify({
             gatewayUrl: this.gatewayUrl,
-            username: this.username
+            username: this.username,
+            token: this.token,
+            tokenExpiresAt: this.tokenExpiresAt
         }));
     }
 
@@ -361,10 +420,20 @@ class DockerFaaSApp {
         if (this.inactivityTimer) {
             clearTimeout(this.inactivityTimer);
         }
+        let timeoutMs = this.sessionTimeoutMs;
+        if (this.tokenExpiresAt) {
+            const expiresAt = new Date(this.tokenExpiresAt).getTime();
+            if (!Number.isNaN(expiresAt)) {
+                const remaining = expiresAt - Date.now();
+                if (remaining > 0 && remaining < timeoutMs) {
+                    timeoutMs = remaining;
+                }
+            }
+        }
         this.inactivityTimer = setTimeout(() => {
             this.showToast('Session expired. Please log in again.', 'warning');
             this.logout({ silent: true });
-        }, this.sessionTimeoutMs);
+        }, timeoutMs);
     }
 
     clearSessionTimeout() {
@@ -382,25 +451,10 @@ class DockerFaaSApp {
 
     // Build History
     loadBuildHistory() {
-        const stored = localStorage.getItem('dockerfaas-build-history');
-        if (!stored) {
-            this.buildHistory = [];
-            return;
-        }
-        try {
-            const parsed = JSON.parse(stored);
-            if (Array.isArray(parsed)) {
-                this.buildHistory = parsed;
-            } else {
-                this.buildHistory = [];
-            }
-        } catch (error) {
-            this.buildHistory = [];
-        }
+        this.buildHistory = [];
     }
 
     saveBuildHistory() {
-        localStorage.setItem('dockerfaas-build-history', JSON.stringify(this.buildHistory));
     }
 
     addBuildHistory(entry) {
@@ -408,7 +462,6 @@ class DockerFaaSApp {
         if (this.buildHistory.length > this.buildHistoryLimit) {
             this.buildHistory = this.buildHistory.slice(0, this.buildHistoryLimit);
         }
-        this.saveBuildHistory();
         this.renderBuildsTable();
     }
 
@@ -418,7 +471,6 @@ class DockerFaaSApp {
             return;
         }
         this.buildHistory[index] = { ...this.buildHistory[index], ...updates };
-        this.saveBuildHistory();
         this.renderBuildsTable();
         if (this.currentBuildId === id) {
             this.renderBuildDetails(this.buildHistory[index]);
@@ -429,10 +481,138 @@ class DockerFaaSApp {
         if (!confirm('Clear build history?')) {
             return;
         }
-        this.buildHistory = [];
-        this.saveBuildHistory();
+        if (!this.authenticated) {
+            this.buildHistory = [];
+            this.renderBuildsTable();
+            this.hideBuildDetails();
+            return;
+        }
+        this.api('/system/builds', { method: 'DELETE' })
+            .then(() => {
+                this.buildHistory = [];
+                this.renderBuildsTable();
+                this.hideBuildDetails();
+                this.showToast('Build history cleared', 'success');
+            })
+            .catch((error) => {
+                this.showToast(`Failed to clear history: ${error.message}`, 'error');
+            });
+    }
+
+    async refreshBuildHistory() {
+        if (!this.authenticated) {
+            return;
+        }
+        try {
+            const limit = Number.isFinite(this.buildHistoryLimit) && this.buildHistoryLimit > 0 ? this.buildHistoryLimit : 50;
+            const response = await this.api(`/system/builds?limit=${limit}&includeOutput=true`, { showLoading: false });
+            if (!response.ok) {
+                return;
+            }
+            const entries = await response.json();
+            if (Array.isArray(entries)) {
+                this.buildHistory = entries;
+                this.renderBuildsTable();
+                if (this.currentBuildId) {
+                    const entry = this.buildHistory.find((item) => item.id === this.currentBuildId);
+                    if (entry) {
+                        this.renderBuildDetails(entry);
+                    }
+                }
+            }
+        } catch (error) {
+            this.showToast(`Failed to load builds: ${error.message}`, 'error');
+        }
+    }
+
+    applyBuildUpdate(entry) {
+        if (!entry || !entry.id) {
+            return;
+        }
+        const index = this.buildHistory.findIndex((item) => item.id === entry.id);
+        if (index === -1) {
+            this.buildHistory.unshift(entry);
+        } else {
+            this.buildHistory[index] = entry;
+        }
+        if (this.buildHistory.length > this.buildHistoryLimit) {
+            this.buildHistory = this.buildHistory.slice(0, this.buildHistoryLimit);
+        }
         this.renderBuildsTable();
-        this.hideBuildDetails();
+        if (this.currentBuildId === entry.id) {
+            this.renderBuildDetails(entry);
+        }
+    }
+
+    startBuildStream() {
+        if (!this.authenticated || this.buildStreamAbort) {
+            return;
+        }
+        this.buildStreamAbort = new AbortController();
+        this.consumeBuildStream(this.buildStreamAbort.signal);
+    }
+
+    stopBuildStream() {
+        if (this.buildStreamAbort) {
+            this.buildStreamAbort.abort();
+            this.buildStreamAbort = null;
+        }
+        this.buildStreamBuffer = '';
+    }
+
+    async consumeBuildStream(signal) {
+        while (this.authenticated && !signal.aborted) {
+            try {
+                const response = await this.api('/system/builds/stream', {
+                    showLoading: false,
+                    raw: true,
+                    signal
+                });
+                if (!this.authenticated || signal.aborted) {
+                    return;
+                }
+                if (!response.ok || !response.body) {
+                    await this.sleep(3000);
+                    continue;
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (!signal.aborted) {
+                    const { value, done } = await reader.read();
+                    if (done) {
+                        break;
+                    }
+                    buffer += decoder.decode(value, { stream: true });
+                    const parts = buffer.split('\n\n');
+                    buffer = parts.pop() || '';
+                    for (const part of parts) {
+                        const lines = part.split('\n');
+                        for (const line of lines) {
+                            if (line.startsWith('data:')) {
+                                const payload = line.replace(/^data:\s*/, '');
+                                try {
+                                    const entry = JSON.parse(payload);
+                                    this.applyBuildUpdate(entry);
+                                } catch (error) {
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                if (!signal.aborted) {
+                    await this.sleep(3000);
+                }
+            }
+        }
+    }
+
+    sleep(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
     // Overview
@@ -1454,18 +1634,7 @@ class DockerFaaSApp {
             console.info('Source build request:', payload);
             this.updatePayloadPreview();
 
-            let buildEntry = null;
             try {
-                buildEntry = this.createBuildHistoryEntry(payload, {
-                    sourceType,
-                    runtime,
-                    gitUrl,
-                    gitRef,
-                    sourcePath,
-                    zipName: zipFile ? zipFile.name : '',
-                    manifest: manifestOverride
-                });
-                this.addBuildHistory(buildEntry);
                 const startedAt = performance.now();
                 let response;
                 if (sourceType === 'zip') {
@@ -1506,34 +1675,13 @@ class DockerFaaSApp {
                     }
                     const verb = result && result.updated ? 'updated' : 'deployed';
                     const imageName = result?.image || 'image';
-                    this.updateBuildHistory(buildEntry.id, {
-                        status: 'success',
-                        image: result?.image,
-                        deployed: result?.deployed,
-                        updated: result?.updated,
-                        finishedAt: new Date().toISOString(),
-                        durationMs,
-                        output: responseText
-                    });
                     this.showToast(`Build ${verb}: ${imageName}`, 'success');
+                    this.refreshBuildHistory();
                     this.switchView('functions');
                 } else {
-                    this.updateBuildHistory(buildEntry.id, {
-                        status: 'failed',
-                        finishedAt: new Date().toISOString(),
-                        durationMs,
-                        error: responseText
-                    });
                     this.showToast(`Build failed: ${responseText}`, 'error');
                 }
             } catch (error) {
-                if (buildEntry) {
-                    this.updateBuildHistory(buildEntry.id, {
-                        status: 'failed',
-                        finishedAt: new Date().toISOString(),
-                        error: error.message
-                    });
-                }
                 this.showToast(`Build error: ${error.message}`, 'error');
             }
             return;
@@ -1766,7 +1914,7 @@ class DockerFaaSApp {
 
     // Build Activity
     loadBuildHistoryView() {
-        this.renderBuildsTable();
+        this.refreshBuildHistory();
         if (this.currentBuildId) {
             const entry = this.buildHistory.find((item) => item.id === this.currentBuildId);
             if (entry) {
@@ -1877,6 +2025,9 @@ class DockerFaaSApp {
             outputLines.push('--- File Changes ---');
             outputLines.push(entry.fileChanges.join('\n'));
         }
+        if (entry.truncated) {
+            outputLines.push('--- Output truncated ---');
+        }
         output.textContent = outputLines.length > 0 ? outputLines.join('\n') : 'No build output available.';
     }
 
@@ -1891,27 +2042,6 @@ class DockerFaaSApp {
             default:
                 return '<span class="badge badge-info">Pending</span>';
         }
-    }
-
-    createBuildHistoryEntry(payload, options) {
-        const timestamp = new Date().toISOString();
-        const fileChanges = Array.isArray(payload?.source?.files)
-            ? payload.source.files.map((file) => file.remove ? `${file.path} (remove)` : file.path)
-            : [];
-        return {
-            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            name: payload?.name || '',
-            sourceType: options.sourceType || payload?.source?.type || '',
-            runtime: options.runtime || payload?.source?.runtime || '',
-            gitUrl: options.gitUrl || payload?.source?.git?.url || '',
-            gitRef: options.gitRef || payload?.source?.git?.ref || '',
-            sourcePath: options.sourcePath || payload?.source?.git?.path || '',
-            zipName: options.zipName || payload?.source?.zip?.filename || '',
-            manifest: options.manifest || payload?.source?.manifest || '',
-            fileChanges,
-            status: 'running',
-            startedAt: timestamp
-        };
     }
 
     // Backup and Import
@@ -2315,6 +2445,55 @@ class DockerFaaSApp {
         }
     }
 
+    // Settings
+    async loadSettings() {
+        try {
+            const response = await this.api('/system/config', { showLoading: false });
+            if (!response.ok) {
+                const errorText = await response.text();
+                this.showToast(`Failed to load settings: ${errorText}`, 'error');
+                return;
+            }
+            const config = await response.json();
+            if (Number.isFinite(config.buildHistoryLimit) && config.buildHistoryLimit > 0) {
+                this.buildHistoryLimit = config.buildHistoryLimit;
+            }
+            this.renderSettings(config);
+        } catch (error) {
+            this.showToast(`Settings error: ${error.message}`, 'error');
+        }
+    }
+
+    renderSettings(config) {
+        const list = document.getElementById('settings-list');
+        if (!list) {
+            return;
+        }
+
+        const entries = [
+            ['Auth Enabled', this.formatBool(config.authEnabled)],
+            ['Require Auth for Functions', this.formatBool(config.requireAuthForFunctions)],
+            ['CORS Allowed Origins', Array.isArray(config.corsAllowedOrigins) ? config.corsAllowedOrigins.join(', ') : '-'],
+            ['Functions Network', config.functionsNetwork || '-'],
+            ['Default Replicas', this.formatNumber(config.defaultReplicas)],
+            ['Max Replicas', this.formatNumber(config.maxReplicas)],
+            ['Metrics Enabled', this.formatBool(config.metricsEnabled)],
+            ['Metrics Port', config.metricsPort || '-'],
+            ['Debug Bind Address', config.debugBindAddress || '-'],
+            ['Auth Rate Limit', this.formatNumber(config.authRateLimit)],
+            ['Auth Rate Window (s)', this.formatNumber(config.authRateWindowSeconds)],
+            ['Auth Token TTL (s)', this.formatNumber(config.authTokenTTLSeconds)],
+            ['Build History Limit', this.formatNumber(config.buildHistoryLimit)],
+            ['Build History Retention (s)', this.formatNumber(config.buildHistoryRetentionSeconds)],
+            ['Build Output Limit (bytes)', this.formatNumber(config.buildOutputLimit)]
+        ];
+
+        list.innerHTML = entries.map(([label, value]) => `
+            <dt>${label}</dt>
+            <dd>${value}</dd>
+        `).join('');
+    }
+
     // UI Helpers
     showLoading() {
         this.loadingCount += 1;
@@ -2360,6 +2539,17 @@ class DockerFaaSApp {
             return '';
         }
         return date.toLocaleString();
+    }
+
+    isTokenExpired(expiresAt) {
+        if (!expiresAt) {
+            return false;
+        }
+        const timeValue = new Date(expiresAt).getTime();
+        if (Number.isNaN(timeValue)) {
+            return false;
+        }
+        return timeValue <= Date.now();
     }
 
     formatNumber(value) {

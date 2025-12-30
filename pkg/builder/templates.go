@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-const fwatchdogVersion = "0.9.11"
+const fwatchdogVersion = "0.11.0"
 
 // GenerateDockerfile builds a Dockerfile from a manifest and runtime.
 func GenerateDockerfile(manifest *Manifest, contextDir string) (string, error) {
@@ -48,9 +48,9 @@ COPY . .
 RUN apt-get update && apt-get install -y curl ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN ARCH="$(uname -m)" && \
   case "$ARCH" in \
-    x86_64|amd64) WATCHDOG="fwatchdog" ;; \
+    x86_64|amd64) WATCHDOG="fwatchdog-amd64" ;; \
     aarch64|arm64) WATCHDOG="fwatchdog-arm64" ;; \
-    armv7l|armv7|armhf) WATCHDOG="fwatchdog-armhf" ;; \
+    armv7l|armv7|armhf) WATCHDOG="fwatchdog-arm" ;; \
     *) echo "Unsupported arch: $ARCH" >&2; exit 1 ;; \
   esac && \
   curl -sSL -o /usr/local/bin/fwatchdog "https://github.com/openfaas/of-watchdog/releases/download/%s/${WATCHDOG}" && \
@@ -80,9 +80,9 @@ COPY . .
 RUN apt-get update && apt-get install -y curl ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN ARCH="$(uname -m)" && \
   case "$ARCH" in \
-    x86_64|amd64) WATCHDOG="fwatchdog" ;; \
+    x86_64|amd64) WATCHDOG="fwatchdog-amd64" ;; \
     aarch64|arm64) WATCHDOG="fwatchdog-arm64" ;; \
-    armv7l|armv7|armhf) WATCHDOG="fwatchdog-armhf" ;; \
+    armv7l|armv7|armhf) WATCHDOG="fwatchdog-arm" ;; \
     *) echo "Unsupported arch: $ARCH" >&2; exit 1 ;; \
   esac && \
   curl -sSL -o /usr/local/bin/fwatchdog "https://github.com/openfaas/of-watchdog/releases/download/%s/${WATCHDOG}" && \
@@ -118,9 +118,9 @@ WORKDIR /home/app
 RUN apt-get update && apt-get install -y curl ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN ARCH="$(uname -m)" && \
   case "$ARCH" in \
-    x86_64|amd64) WATCHDOG="fwatchdog" ;; \
+    x86_64|amd64) WATCHDOG="fwatchdog-amd64" ;; \
     aarch64|arm64) WATCHDOG="fwatchdog-arm64" ;; \
-    armv7l|armv7|armhf) WATCHDOG="fwatchdog-armhf" ;; \
+    armv7l|armv7|armhf) WATCHDOG="fwatchdog-arm" ;; \
     *) echo "Unsupported arch: $ARCH" >&2; exit 1 ;; \
   esac && \
   curl -sSL -o /usr/local/bin/fwatchdog "https://github.com/openfaas/of-watchdog/releases/download/%s/${WATCHDOG}" && \
@@ -144,9 +144,9 @@ COPY . .
 RUN apt-get update && apt-get install -y bash curl ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN ARCH="$(uname -m)" && \
   case "$ARCH" in \
-    x86_64|amd64) WATCHDOG="fwatchdog" ;; \
+    x86_64|amd64) WATCHDOG="fwatchdog-amd64" ;; \
     aarch64|arm64) WATCHDOG="fwatchdog-arm64" ;; \
-    armv7l|armv7|armhf) WATCHDOG="fwatchdog-armhf" ;; \
+    armv7l|armv7|armhf) WATCHDOG="fwatchdog-arm" ;; \
     *) echo "Unsupported arch: $ARCH" >&2; exit 1 ;; \
   esac && \
   curl -sSL -o /usr/local/bin/fwatchdog "https://github.com/openfaas/of-watchdog/releases/download/%s/${WATCHDOG}" && \

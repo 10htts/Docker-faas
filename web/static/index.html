@@ -111,6 +111,13 @@
                 </svg>
                 Metrics
             </button>
+            <button class="nav-item" data-view="settings">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.34 1.87l.02.08a2 2 0 1 1-3.4 0l.02-.08a1.7 1.7 0 0 0-.34-1.87 1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.87-.34l-.08.02a2 2 0 1 1 0-3.4l.08.02A1.7 1.7 0 0 0 4 9a1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06A2 2 0 1 1 7.03 3.2l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .34-1.87l-.02-.08a2 2 0 1 1 3.4 0l-.02.08A1.7 1.7 0 0 0 14 3.99a1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 .6 1 1.7 1.7 0 0 0 1.87.34l.08-.02a2 2 0 1 1 0 3.4l-.08-.02a1.7 1.7 0 0 0-1.87.34 1.7 1.7 0 0 0-.6 1z"/>
+                </svg>
+                Settings
+            </button>
         </nav>
 
         <!-- Main Content -->
@@ -570,6 +577,32 @@
                 <div class="detail-section">
                     <h3>Raw Metrics</h3>
                     <pre id="metrics-raw" class="logs-output">Metrics will appear here after refresh.</pre>
+                </div>
+            </div>
+
+            <!-- Settings View -->
+            <div id="settings-view" class="view">
+                <div class="view-header">
+                    <h2>Settings</h2>
+                    <div class="view-actions">
+                        <button class="btn btn-secondary" id="refresh-settings-btn">Refresh</button>
+                    </div>
+                </div>
+
+                <div class="detail-grid">
+                    <div class="detail-section">
+                        <h3>Gateway Configuration</h3>
+                        <dl class="detail-list" id="settings-list"></dl>
+                    </div>
+                    <div class="detail-section">
+                        <h3>Notes</h3>
+                        <p class="text-muted">
+                            Settings are read-only and reflect the current gateway configuration.
+                        </p>
+                        <p class="text-muted">
+                            Update configuration via environment variables and restart the gateway.
+                        </p>
+                    </div>
                 </div>
             </div>
         </main>

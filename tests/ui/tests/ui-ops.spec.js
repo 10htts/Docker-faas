@@ -36,3 +36,11 @@ test('metrics view loads raw metrics', async ({ page }) => {
   await expect(page.locator('#metrics-view')).toHaveClass(/active/);
   await expect(page.locator('#metrics-raw')).toContainText('gateway_http_requests_total');
 });
+
+test('settings view loads config snapshot', async ({ page }) => {
+  await login(page);
+
+  await page.click('.nav-item[data-view="settings"]');
+  await expect(page.locator('#settings-view')).toHaveClass(/active/);
+  await expect(page.locator('#settings-list')).toContainText('Auth Enabled');
+});

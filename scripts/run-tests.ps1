@@ -64,6 +64,9 @@ $tests = @(
   "test-debug-mode.sh",
   "test-secrets.sh",
   "test-metrics.sh",
+  "test-config.sh",
+  "test-auth-token.sh",
+  "test-builds.sh",
   "test-upgrade.sh",
   "openfaas-compatibility-test.sh",
   "test-faas-cli-workflow.sh"
@@ -106,9 +109,14 @@ if (-not $SkipUiE2E) {
         & npm install
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       }
-      & npx playwright install
+      $playwrightCmd = Join-Path "node_modules" ".bin\\playwright.cmd"
+      if (-not (Test-Path $playwrightCmd)) {
+        Write-Warning "Playwright CLI not found; skipping UI E2E tests."
+        return
+      }
+      & $playwrightCmd install
       if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      & npx playwright test
+      & $playwrightCmd test
       if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     } finally {
       Pop-Location

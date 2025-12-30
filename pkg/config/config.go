@@ -27,6 +27,7 @@ type Config struct {
 	RequireAuthForFunctions bool
 	AuthRateLimit           int
 	AuthRateWindow          time.Duration
+	AuthTokenTTL            time.Duration
 
 	// Database
 	StateDBPath string
@@ -44,6 +45,11 @@ type Config struct {
 
 	// Debug settings
 	DebugBindAddress string
+
+	// Build history
+	BuildHistoryLimit     int
+	BuildHistoryRetention time.Duration
+	BuildOutputLimit      int
 }
 
 // LoadConfig loads configuration from environment variables
@@ -69,6 +75,7 @@ func LoadConfig() *Config {
 		RequireAuthForFunctions: getBoolEnv("REQUIRE_AUTH_FOR_FUNCTIONS", true),
 		AuthRateLimit:           getIntEnv("AUTH_RATE_LIMIT", 10),
 		AuthRateWindow:          getDurationEnv("AUTH_RATE_WINDOW", time.Minute),
+		AuthTokenTTL:            getDurationEnv("AUTH_TOKEN_TTL", 30*time.Minute),
 		StateDBPath:             getEnv("STATE_DB_PATH", "docker-faas.db"),
 		MetricsEnabled:          getBoolEnv("METRICS_ENABLED", true),
 		MetricsPort:             getEnv("METRICS_PORT", "9090"),
@@ -76,6 +83,9 @@ func LoadConfig() *Config {
 		DefaultReplicas:         getIntEnv("DEFAULT_REPLICAS", 1),
 		MaxReplicas:             getIntEnv("MAX_REPLICAS", 10),
 		DebugBindAddress:        getEnv("DEBUG_BIND_ADDRESS", "127.0.0.1"),
+		BuildHistoryLimit:       getIntEnv("BUILD_HISTORY_LIMIT", 100),
+		BuildHistoryRetention:   getDurationEnv("BUILD_HISTORY_RETENTION", 24*time.Hour),
+		BuildOutputLimit:        getIntEnv("BUILD_OUTPUT_LIMIT", 200*1024),
 	}
 }
 

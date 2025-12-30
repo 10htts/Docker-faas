@@ -23,6 +23,12 @@ func (rw *responseWriter) WriteHeader(code int) {
 	rw.ResponseWriter.WriteHeader(code)
 }
 
+func (rw *responseWriter) Flush() {
+	if flusher, ok := rw.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
 // LoggingMiddleware logs HTTP requests
 type LoggingMiddleware struct {
 	logger *logrus.Logger

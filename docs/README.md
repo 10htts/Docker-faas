@@ -21,6 +21,7 @@ Complete documentation for Docker FaaS - a lightweight, production-ready FaaS pl
 - **[Web UI Guide](WEB_UI.md)** - Using the web interface for function management
 - **[Secrets Management](SECRETS.md)** - Secure secret storage and injection
 - **[Source Examples](SOURCE_EXAMPLES.md)** - Example functions and language templates
+ - **[Release Process](RELEASING.md)** - How to cut tagged releases
 
 #### Operations
 - **[Production Readiness](PRODUCTION_READINESS.md)** - Production deployment checklist and best practices

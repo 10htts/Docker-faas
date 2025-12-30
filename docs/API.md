@@ -4,10 +4,11 @@ Complete API reference for Docker FaaS Gateway.
 
 ## Authentication
 
-All endpoints except `/healthz` require Basic Authentication when `AUTH_ENABLED=true`.
+When `AUTH_ENABLED=true`, API requests require either Basic Auth or a UI token.
 
 ```bash
 Authorization: Basic <base64(username:password)>
+Authorization: Bearer <token>
 ```
 
 Default credentials: `admin:admin`
@@ -129,6 +130,45 @@ Inspect a source bundle (zip or Git) and return the detected `docker-faas.yaml` 
 }
 ```
 Notes: `files` includes text files up to 200KB. Binary or larger files return `editable: false`.
+
+### GET /system/builds
+
+List recent source build activity.
+
+**Query Parameters:**
+- `status` (optional) - Filter by status (comma-separated values).
+- `name` (optional) - Filter by function name (substring match).
+- `sourceType` (optional) - Filter by source type (comma-separated values, e.g. `git`, `zip`, `inline`).
+- `since` (optional) - RFC3339 timestamp; include builds started at or after this time.
+- `before` (optional) - RFC3339 timestamp; include builds started before this time.
+- `limit` (optional) - Limit the number of results.
+- `includeOutput` (optional) - Include build output in the response (`true` or `false`, default `true`).
+
+**Response:** JSON array of build entries.
+
+Notes:
+- Output is capped at `BUILD_OUTPUT_LIMIT` bytes per entry. When truncated, `truncated` is `true`.
+
+### DELETE /system/builds
+
+Clear build history.
+
+**Response:** `204 No Content`
+
+### GET /system/builds/{id}
+
+Get a build entry by ID.
+
+**Query Parameters:**
+- `includeOutput` (optional) - Include build output in the response (`true` or `false`, default `true`).
+
+**Response:** JSON build entry.
+
+### GET /system/builds/stream
+
+Stream build updates as server-sent events.
+
+**Response:** `text/event-stream` with build entry payloads.
 
 ### POST /system/functions
 
@@ -286,6 +326,38 @@ Prometheus metrics endpoint on the gateway port (authenticated).
 
 **Response:** Prometheus format metrics
 
+### GET /system/config
+
+Returns a safe configuration snapshot for the UI.
+
+**Response:** JSON config values
+
+### POST /auth/login
+
+Issue a short-lived UI token.
+
+**Request:**
+```json
+{
+  "username": "admin",
+  "password": "admin"
+}
+```
+
+**Response:**
+```json
+{
+  "token": "...",
+  "expiresAt": "2025-01-01T00:00:00Z"
+}
+```
+
+### POST /auth/logout
+
+Revoke the current token.
+
+**Response:** `204 No Content`
+
 ## Error Responses
 
 ### 400 Bad Request
@@ -343,14 +415,12 @@ This API implements the core OpenFaaS Gateway API endpoints. The following diffe
 - Function scaling (POST)
 - Function invocation (POST/GET/etc.)
 - Function logs (GET)
+- Async invocations
 - System info (GET)
 - Health check (GET)
 
 ### Not Yet Supported:
-- Async invocations
 - Function namespaces
-- Secret management API
-- Function build API
 
 ## Examples
 

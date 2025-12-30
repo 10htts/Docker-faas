@@ -22,6 +22,26 @@ This checklist summarizes the production-readiness items implemented and the ope
 - Set `CORS_ALLOWED_ORIGINS` for your UI origin
 - Run E2E tests before production
 
+## Production Baseline
+
+Use this baseline as a starting point for a production deployment:
+
+```
+AUTH_ENABLED=true
+AUTH_PASSWORD=change-this
+REQUIRE_AUTH_FOR_FUNCTIONS=true
+AUTH_RATE_LIMIT=10
+AUTH_RATE_WINDOW=1m
+AUTH_TOKEN_TTL=30m
+CORS_ALLOWED_ORIGINS=https://your-ui.example.com
+DEBUG_BIND_ADDRESS=127.0.0.1
+BUILD_HISTORY_LIMIT=100
+BUILD_HISTORY_RETENTION=24h
+BUILD_OUTPUT_LIMIT=204800
+```
+
+Adjust the build history limits to meet your retention requirements and storage constraints.
+
 ## Tests
 
 Run all tests:

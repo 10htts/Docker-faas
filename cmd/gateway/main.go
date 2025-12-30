@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 
+	"github.com/docker-faas/docker-faas/pkg/auth"
 	"github.com/docker-faas/docker-faas/pkg/config"
 	"github.com/docker-faas/docker-faas/pkg/gateway"
 	"github.com/docker-faas/docker-faas/pkg/metrics"
@@ -61,6 +62,27 @@ func main() {
 
 	// Initialize gateway
 	gw := gateway.NewGateway(st, dockerProvider, rt, logger, cfg.FunctionsNetwork)
+	authManager := auth.NewManager(cfg.AuthTokenTTL)
+	gw.SetAuth(authManager, cfg.AuthUser, cfg.AuthPassword)
+	gw.SetBuildTracker(gateway.NewBuildTracker(cfg.BuildHistoryLimit, cfg.BuildHistoryRetention))
+	gw.SetBuildOutputLimit(cfg.BuildOutputLimit)
+	gw.SetConfigView(&gateway.ConfigView{
+		AuthEnabled:                  cfg.AuthEnabled,
+		RequireAuthForFunctions:      cfg.RequireAuthForFunctions,
+		CORSAllowedOrigins:           cfg.CORSAllowedOrigins,
+		FunctionsNetwork:             cfg.FunctionsNetwork,
+		DefaultReplicas:              cfg.DefaultReplicas,
+		MaxReplicas:                  cfg.MaxReplicas,
+		MetricsEnabled:               cfg.MetricsEnabled,
+		MetricsPort:                  cfg.MetricsPort,
+		DebugBindAddress:             cfg.DebugBindAddress,
+		AuthRateLimit:                cfg.AuthRateLimit,
+		AuthRateWindowSeconds:        int(cfg.AuthRateWindow.Seconds()),
+		AuthTokenTTLSeconds:          int(cfg.AuthTokenTTL.Seconds()),
+		BuildHistoryLimit:            cfg.BuildHistoryLimit,
+		BuildHistoryRetentionSeconds: int(cfg.BuildHistoryRetention.Seconds()),
+		BuildOutputLimit:             cfg.BuildOutputLimit,
+	})
 
 	// Setup HTTP router
 	r := mux.NewRouter()
@@ -72,12 +94,21 @@ func main() {
 	r.HandleFunc("/system/functions", gw.HandleUpdateFunction).Methods("PUT")
 	r.HandleFunc("/system/functions", gw.HandleDeleteFunction).Methods("DELETE")
 	r.HandleFunc("/system/builds", gw.HandleBuildFunction).Methods("POST")
+	r.HandleFunc("/system/builds", gw.HandleListBuilds).Methods("GET")
+	r.HandleFunc("/system/builds", gw.HandleClearBuilds).Methods("DELETE")
 	r.HandleFunc("/system/builds/inspect", gw.HandleInspectBuild).Methods("POST")
+	r.HandleFunc("/system/builds/stream", gw.HandleBuildStream).Methods("GET")
+	r.HandleFunc("/system/builds/{id}", gw.HandleGetBuild).Methods("GET")
 	r.HandleFunc("/system/function/{name}/containers", gw.HandleFunctionContainers).Methods("GET")
 	r.HandleFunc("/system/scale-function/{name}", gw.HandleScaleFunction).Methods("POST")
 	r.HandleFunc("/system/logs", gw.HandleGetLogs).Methods("GET")
 	r.HandleFunc("/system/function-async/{name}", gw.HandleInvokeFunctionAsync).Methods("POST", "GET", "PUT", "DELETE", "PATCH")
 	r.Handle("/system/metrics", promhttp.Handler()).Methods("GET")
+	r.HandleFunc("/system/config", gw.HandleConfig).Methods("GET")
+
+	// Auth endpoints
+	r.HandleFunc("/auth/login", gw.HandleLogin).Methods("POST")
+	r.HandleFunc("/auth/logout", gw.HandleLogout).Methods("POST")
 
 	// Secret management endpoints
 	r.HandleFunc("/system/secrets", gw.HandleCreateSecret).Methods("POST")
@@ -97,7 +128,7 @@ func main() {
 	corsMiddleware := middleware.NewCORSMiddleware(cfg.CORSAllowedOrigins)
 	loggingMiddleware := middleware.NewLoggingMiddleware(logger)
 	authRateLimiter := middleware.NewAuthRateLimiter(cfg.AuthRateLimit, cfg.AuthRateWindow)
-	authMiddleware := middleware.NewBasicAuthMiddleware(cfg.AuthUser, cfg.AuthPassword, cfg.AuthEnabled, cfg.RequireAuthForFunctions, authRateLimiter, logger)
+	authMiddleware := middleware.NewBasicAuthMiddleware(cfg.AuthUser, cfg.AuthPassword, cfg.AuthEnabled, cfg.RequireAuthForFunctions, authRateLimiter, authManager, logger)
 
 	// Create separate router for UI (no auth)
 	uiRouter := mux.NewRouter()
@@ -112,6 +143,9 @@ func main() {
 	mainRouter.PathPrefix("/docs/").Handler(corsMiddleware.Middleware(http.StripPrefix("/docs/", http.FileServer(http.Dir("./docs")))))
 	mainRouter.HandleFunc("/docs", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/docs/", http.StatusFound)
+	})
+	mainRouter.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/ui/", http.StatusFound)
 	})
 	mainRouter.PathPrefix("/").Handler(corsMiddleware.Middleware(loggingMiddleware.Middleware(authMiddleware.Middleware(r))))
 

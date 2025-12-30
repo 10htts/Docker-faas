@@ -21,21 +21,53 @@ import (
 
 // Gateway handles OpenFaaS API requests
 type Gateway struct {
-	store    Store
-	provider Provider
-	router   Router
-	logger   *logrus.Logger
-	network  string
+	store            Store
+	provider         Provider
+	router           Router
+	logger           *logrus.Logger
+	network          string
+	builds           *BuildTracker
+	authUser         string
+	authPass         string
+	authMgr          AuthManager
+	config           *ConfigView
+	buildOutputLimit int
 }
 
 // NewGateway creates a new gateway instance
 func NewGateway(store Store, provider Provider, router Router, logger *logrus.Logger, network string) *Gateway {
 	return &Gateway{
-		store:    store,
-		provider: provider,
-		router:   router,
-		logger:   logger,
-		network:  network,
+		store:            store,
+		provider:         provider,
+		router:           router,
+		logger:           logger,
+		network:          network,
+		builds:           NewBuildTracker(100, 0),
+		buildOutputLimit: 200 * 1024,
+	}
+}
+
+// SetAuth configures auth credentials and token manager.
+func (g *Gateway) SetAuth(manager AuthManager, username, password string) {
+	g.authMgr = manager
+	g.authUser = username
+	g.authPass = password
+}
+
+// SetConfigView configures the read-only config view.
+func (g *Gateway) SetConfigView(view *ConfigView) {
+	g.config = view
+}
+
+// SetBuildTracker configures the build tracker.
+func (g *Gateway) SetBuildTracker(tracker *BuildTracker) {
+	g.builds = tracker
+}
+
+// SetBuildOutputLimit configures the max build output bytes retained.
+func (g *Gateway) SetBuildOutputLimit(limit int) {
+	if limit > 0 {
+		g.buildOutputLimit = limit
 	}
 }
 

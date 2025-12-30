@@ -204,6 +204,9 @@ These scripts cover production readiness scenarios.
 - `test-debug-mode.sh` - debug port binding and mapping
 - `test-faas-cli-workflow.sh` - faas-cli login, deploy, invoke, scale, remove
 - `test-metrics.sh` - metrics endpoint availability and core counters
+- `test-config.sh` - config endpoint snapshot availability
+- `test-auth-token.sh` - token login/logout flow
+- `test-builds.sh` - build history list and clear
 - `test-upgrade.sh` - database migration upgrade path (requires sqlite3 and gateway image)
 
 ### Running the Tests

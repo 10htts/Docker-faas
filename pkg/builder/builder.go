@@ -14,7 +14,7 @@ import (
 )
 
 // BuildImage builds a Docker image from a context directory.
-func BuildImage(ctx context.Context, dockerClient *client.Client, contextDir, dockerfile, imageName string, logger *logrus.Logger) error {
+func BuildImage(ctx context.Context, dockerClient *client.Client, contextDir, dockerfile, imageName string, logger *logrus.Logger, output io.Writer) error {
 	tar, err := archive.TarWithOptions(contextDir, &archive.TarOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to create build context: %w", err)
@@ -45,8 +45,15 @@ func BuildImage(ctx context.Context, dockerClient *client.Client, contextDir, do
 		if msg.Error != nil {
 			return fmt.Errorf("docker build error: %s", msg.Error.Message)
 		}
-		if msg.Stream != "" && logger != nil {
-			logger.Infof("build: %s", msg.Stream)
+		if msg.Stream != "" {
+			if logger != nil {
+				logger.Infof("build: %s", msg.Stream)
+			}
+			if output != nil {
+				if _, err := output.Write([]byte(msg.Stream)); err != nil {
+					return fmt.Errorf("failed to write build output: %w", err)
+				}
+			}
 		}
 	}
 

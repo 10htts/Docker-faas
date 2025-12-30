@@ -33,6 +33,9 @@ run_e2e test-network-isolation.sh
 run_e2e test-debug-mode.sh
 run_e2e test-secrets.sh
 run_e2e test-metrics.sh
+run_e2e test-config.sh
+run_e2e test-auth-token.sh
+run_e2e test-builds.sh
 
 if [[ -z "${SKIP_UPGRADE}" ]]; then
   if command -v sqlite3 >/dev/null 2>&1; then
@@ -68,8 +71,8 @@ if [[ -z "${SKIP_UI_E2E}" ]]; then
         if [[ ! -d node_modules ]]; then
           npm install
         fi
-        npx playwright install
-        npx playwright test
+        ./node_modules/.bin/playwright install
+        ./node_modules/.bin/playwright test
       )
     else
       printf "tests/ui/package.json not found; skipping UI E2E tests\n"

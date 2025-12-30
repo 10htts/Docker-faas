@@ -82,9 +82,40 @@ func (g *Gateway) HandleBuildFunction(w http.ResponseWriter, r *http.Request) {
 	}
 	defer cleanup()
 
+	buildEntry := BuildEntry{
+		Name:       req.Name,
+		SourceType: req.Source.Type,
+		Runtime:    req.Source.Runtime,
+		Status:     "running",
+		StartedAt:  start.UTC(),
+	}
+	if req.Source.Git != nil {
+		buildEntry.GitURL = req.Source.Git.URL
+		buildEntry.GitRef = req.Source.Git.Ref
+		buildEntry.SourcePath = req.Source.Git.Path
+	}
+	if req.Source.Zip != nil {
+		buildEntry.ZipName = req.Source.Zip.Filename
+	}
+	if g.builds != nil {
+		buildEntry = g.builds.Add(buildEntry)
+	}
+
 	manifest, dockerfile, contextDir, err := g.prepareBuildContext(r.Context(), tempDir, req, true)
 	if err != nil {
 		g.logger.Errorf("Build preparation failed: %v", err)
+		if g.builds != nil {
+			durationMs := int64(time.Since(start).Milliseconds())
+			finished := time.Now().UTC()
+			msg := err.Error()
+			status := "failed"
+			g.builds.Update(buildEntry.ID, BuildUpdate{
+				Status:     &status,
+				FinishedAt: &finished,
+				DurationMs: &durationMs,
+				Error:      &msg,
+			})
+		}
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -94,17 +125,68 @@ func (g *Gateway) HandleBuildFunction(w http.ResponseWriter, r *http.Request) {
 		name = manifest.Name
 	}
 	if name == "" {
+		if g.builds != nil {
+			durationMs := int64(time.Since(start).Milliseconds())
+			finished := time.Now().UTC()
+			msg := "name is required (request or docker-faas.yaml)"
+			status := "failed"
+			g.builds.Update(buildEntry.ID, BuildUpdate{
+				Status:     &status,
+				FinishedAt: &finished,
+				DurationMs: &durationMs,
+				Error:      &msg,
+			})
+		}
 		http.Error(w, "name is required (request or docker-faas.yaml)", http.StatusBadRequest)
 		return
 	}
 	if err := validateFunctionName(name); err != nil {
+		if g.builds != nil {
+			durationMs := int64(time.Since(start).Milliseconds())
+			finished := time.Now().UTC()
+			msg := err.Error()
+			status := "failed"
+			g.builds.Update(buildEntry.ID, BuildUpdate{
+				Status:     &status,
+				FinishedAt: &finished,
+				DurationMs: &durationMs,
+				Error:      &msg,
+			})
+		}
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
+	if g.builds != nil {
+		update := BuildUpdate{}
+		update.Name = &name
+		if manifest != nil && manifest.Runtime != "" {
+			runtime := manifest.Runtime
+			update.Runtime = &runtime
+		}
+		g.builds.Update(buildEntry.ID, update)
+	}
+
 	imageName := buildImageTag(name)
-	if err := builder.BuildImage(r.Context(), g.provider.DockerClient(), contextDir, dockerfile, imageName, g.logger); err != nil {
+	output := newLimitedBuffer(g.buildOutputLimit)
+	if err := builder.BuildImage(r.Context(), g.provider.DockerClient(), contextDir, dockerfile, imageName, g.logger, output); err != nil {
 		g.logger.Errorf("Build failed: %v", err)
+		if g.builds != nil {
+			durationMs := int64(time.Since(start).Milliseconds())
+			finished := time.Now().UTC()
+			msg := err.Error()
+			status := "failed"
+			out := output.String()
+			truncated := output.Truncated()
+			g.builds.Update(buildEntry.ID, BuildUpdate{
+				Status:     &status,
+				FinishedAt: &finished,
+				DurationMs: &durationMs,
+				Error:      &msg,
+				Output:     &out,
+				Truncated:  &truncated,
+			})
+		}
 		http.Error(w, fmt.Sprintf("build failed: %v", err), http.StatusInternalServerError)
 		return
 	}
@@ -119,6 +201,23 @@ func (g *Gateway) HandleBuildFunction(w http.ResponseWriter, r *http.Request) {
 		updated, err = g.deployBuiltImage(r.Context(), name, imageName, manifest)
 		if err != nil {
 			g.logger.Errorf("Deploy failed: %v", err)
+			if g.builds != nil {
+				durationMs := int64(time.Since(start).Milliseconds())
+				finished := time.Now().UTC()
+				msg := err.Error()
+				status := "failed"
+				out := output.String()
+				truncated := output.Truncated()
+				g.builds.Update(buildEntry.ID, BuildUpdate{
+					Status:     &status,
+					FinishedAt: &finished,
+					DurationMs: &durationMs,
+					Error:      &msg,
+					Output:     &out,
+					Image:      &imageName,
+					Truncated:  &truncated,
+				})
+			}
 			http.Error(w, fmt.Sprintf("deploy failed: %v", err), http.StatusInternalServerError)
 			return
 		}
@@ -126,6 +225,24 @@ func (g *Gateway) HandleBuildFunction(w http.ResponseWriter, r *http.Request) {
 
 	duration := time.Since(start).Seconds()
 	g.logger.Infof("Build completed for %s in %.2fs (image: %s)", name, duration, imageName)
+	if g.builds != nil {
+		durationMs := int64(time.Since(start).Milliseconds())
+		finished := time.Now().UTC()
+		status := "success"
+		out := output.String()
+		truncated := output.Truncated()
+		deployed := deploy
+		g.builds.Update(buildEntry.ID, BuildUpdate{
+			Status:     &status,
+			FinishedAt: &finished,
+			DurationMs: &durationMs,
+			Image:      &imageName,
+			Deployed:   &deployed,
+			Updated:    &updated,
+			Output:     &out,
+			Truncated:  &truncated,
+		})
+	}
 
 	g.writeJSON(w, http.StatusAccepted, buildResponse{
 		Name:     name,
@@ -318,6 +435,14 @@ func (g *Gateway) prepareBuildContext(ctx context.Context, tempDir string, req *
 
 	if err := ensureDir(contextDir); err != nil {
 		return nil, "", "", fmt.Errorf("invalid source path: %w", err)
+	}
+
+	if source.Type == "zip" && strings.TrimSpace(source.Manifest) != "" {
+		if !hasFile(contextDir, "Dockerfile") && !hasFile(contextDir, "docker-faas.yaml") {
+			if resolved, err := resolveSingleSubdir(contextDir); err == nil && resolved != contextDir {
+				contextDir = resolved
+			}
+		}
 	}
 
 	if len(source.Files) > 0 {
@@ -545,6 +670,44 @@ func buildImageTag(name string) string {
 	safe = strings.ReplaceAll(safe, "_", "-")
 	safe = strings.ReplaceAll(safe, " ", "-")
 	return fmt.Sprintf("docker-faas/%s:%d", safe, time.Now().Unix())
+}
+
+type limitedBuffer struct {
+	buf       bytes.Buffer
+	limit     int
+	truncated bool
+}
+
+func newLimitedBuffer(limit int) *limitedBuffer {
+	if limit <= 0 {
+		limit = 1024
+	}
+	return &limitedBuffer{limit: limit}
+}
+
+func (l *limitedBuffer) Write(p []byte) (int, error) {
+	if l.truncated {
+		return len(p), nil
+	}
+	remaining := l.limit - l.buf.Len()
+	if remaining <= 0 {
+		l.truncated = true
+		return len(p), nil
+	}
+	if len(p) > remaining {
+		_, _ = l.buf.Write(p[:remaining])
+		l.truncated = true
+		return len(p), nil
+	}
+	return l.buf.Write(p)
+}
+
+func (l *limitedBuffer) String() string {
+	return l.buf.String()
+}
+
+func (l *limitedBuffer) Truncated() bool {
+	return l.truncated
 }
 
 const (
@@ -877,4 +1040,9 @@ func isTextContent(data []byte) bool {
 		return false
 	}
 	return utf8.Valid(data)
+}
+
+func hasFile(path, name string) bool {
+	_, err := os.Stat(filepath.Join(path, name))
+	return err == nil
 }

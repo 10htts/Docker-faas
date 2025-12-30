@@ -22,6 +22,7 @@ test('login stores session without password', async ({ page }) => {
   expect(sessionData.gatewayUrl).toBe(gatewayUrl);
   expect(sessionData.username).toBe(username);
   expect(sessionData.password).toBeUndefined();
+  expect(sessionData.token).toBeTruthy();
 
   await expect(page.locator('#password')).toHaveValue('');
 });

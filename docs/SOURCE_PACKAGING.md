@@ -50,7 +50,7 @@ ENV fprocess="python /home/app/handler.py"
 ENV mode="http"
 ENV upstream_url="http://127.0.0.1:8080"
 
-RUN wget -qO /usr/local/bin/fwatchdog https://github.com/openfaas/of-watchdog/releases/download/0.9.11/fwatchdog \
+RUN wget -qO /usr/local/bin/fwatchdog https://github.com/openfaas/of-watchdog/releases/download/0.11.0/fwatchdog-amd64 \
   && chmod +x /usr/local/bin/fwatchdog
 
 EXPOSE 8080

@@ -31,6 +31,7 @@ Docker FaaS is configured through environment variables. Defaults are shown belo
 | `REQUIRE_AUTH_FOR_FUNCTIONS` | `true` | Require auth on `/function/*` (set `false` for OpenFaaS compatibility) |
 | `AUTH_RATE_LIMIT` | `10` | Failed auth attempts allowed per window |
 | `AUTH_RATE_WINDOW` | `1m` | Rate limit window duration |
+| `AUTH_TOKEN_TTL` | `30m` | UI auth token time-to-live |
 
 ## Database
 
@@ -57,6 +58,14 @@ Docker FaaS is configured through environment variables. Defaults are shown belo
 | Variable | Default | Description |
 | --- | --- | --- |
 | `DEBUG_BIND_ADDRESS` | `127.0.0.1` | Host bind address for debug ports |
+
+## Build History
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `BUILD_HISTORY_LIMIT` | `100` | Maximum number of build entries to retain |
+| `BUILD_HISTORY_RETENTION` | `24h` | How long to keep build history entries |
+| `BUILD_OUTPUT_LIMIT` | `204800` | Maximum bytes of build output stored per entry |
 
 ## Tips
 
