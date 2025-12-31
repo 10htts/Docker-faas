@@ -21,7 +21,7 @@ Docker-native Function-as-a-Service (FaaS) gateway compatible with OpenFaaS and 
 ### Docker Compose
 
 ```bash
-git clone https://github.com/docker-faas/docker-faas.git
+git clone https://github.com/10htts/Docker-faas.git
 cd docker-faas
 
 docker-compose up -d

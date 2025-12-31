@@ -25,7 +25,7 @@ $version = (Invoke-WebRequest "https://api.github.com/repos/openfaas/faas-cli/re
 
 1) Start the gateway:
 ```bash
-git clone https://github.com/docker-faas/docker-faas.git
+git clone https://github.com/10htts/Docker-faas.git
 cd docker-faas
 docker-compose up -d
 ```

@@ -382,8 +382,11 @@ Constant-Time Compare
 - Simpler deployment
 
 ### Migration Path
-1. Export function definitions
-2. Deploy OpenFaaS on K8s
+1. Export function definitions (use the Web UI export or script against `/system/functions`).
+2. Migrate secrets to your K8s secret store.
+3. Deploy OpenFaaS on Kubernetes.
+4. Deploy functions with `faas-cli` using the exported configs (images, env vars, labels, secrets, limits).
+5. Validate routing and scaling, then decommission the Docker host.
 3. Import functions
 4. Update gateway URL
 5. No code changes needed

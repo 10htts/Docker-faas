@@ -304,7 +304,7 @@ Alias for async invocation.
 
 ### GET /healthz
 
-Health check endpoint. When `AUTH_ENABLED=true`, this endpoint requires auth.
+Health check endpoint. This endpoint is always unauthenticated so Docker and load balancers can probe it.
 
 Checks:
 - Docker connectivity

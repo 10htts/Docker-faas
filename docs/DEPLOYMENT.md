@@ -47,5 +47,5 @@ Database lives under `/data`. Use the scripts:
 
 ## Security Notes
 
-- Docker socket mount gives full Docker control. Use a Docker API proxy if needed.
+- Docker socket mount grants root-equivalent control of the host. Treat it as privileged and restrict access to the gateway container. Consider a Docker API proxy for tighter ACLs.
 - Keep debug ports bound to localhost unless you explicitly need remote debugging.
