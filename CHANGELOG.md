@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-01-19
+
+### Added
+- Network reconciliation to automatically reconnect gateway to function networks on startup and periodically
+- New environment variables `RECONCILE_FUNCTION_NETWORKS` and `RECONCILE_INTERVAL_SECONDS`
+
 ## [2.0.0] - 2025-12-30
 
 ### Added
@@ -74,6 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Example functions and stack files
 - Integration test documentation
 
-[Unreleased]: https://github.com/docker-faas/docker-faas/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/docker-faas/docker-faas/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/docker-faas/docker-faas/releases/tag/v2.1.0
 [2.0.0]: https://github.com/docker-faas/docker-faas/releases/tag/v2.0.0
 [1.0.0]: https://github.com/docker-faas/docker-faas/releases/tag/v1.0.0

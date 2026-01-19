@@ -67,6 +67,13 @@ Docker FaaS is configured through environment variables. Defaults are shown belo
 | `BUILD_HISTORY_RETENTION` | `24h` | How long to keep build history entries |
 | `BUILD_OUTPUT_LIMIT` | `204800` | Maximum bytes of build output stored per entry |
 
+## Network Reconciliation
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `RECONCILE_FUNCTION_NETWORKS` | `true` | Enable automatic reconnection to function networks on startup |
+| `RECONCILE_INTERVAL_SECONDS` | `60` | Interval for periodic network reconciliation (0 disables periodic) |
+
 ## Tips
 
 - For OpenFaaS compatibility with `faas-cli invoke`, set `REQUIRE_AUTH_FOR_FUNCTIONS=false`.
