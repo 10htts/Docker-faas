@@ -16,7 +16,11 @@
       "Bash(grep:*)",
       "Bash(done)",
       "Bash(python scripts/check-doc-links.py:*)",
-      "Bash(go tool cover:*)"
+      "Bash(go tool cover:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\ndocs: update changelog and configuration for v2.1.0 release\n\n- Add network reconciliation feature to CHANGELOG\n- Document RECONCILE_FUNCTION_NETWORKS and RECONCILE_INTERVAL_SECONDS env vars\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git tag:*)",
+      "Bash(git push:*)"
     ]
   }
 }
