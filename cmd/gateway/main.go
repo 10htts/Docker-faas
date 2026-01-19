@@ -66,6 +66,45 @@ func main() {
 	gw.SetAuth(authManager, cfg.AuthUser, cfg.AuthPassword)
 	gw.SetBuildTracker(gateway.NewBuildTracker(cfg.BuildHistoryLimit, cfg.BuildHistoryRetention))
 	gw.SetBuildOutputLimit(cfg.BuildOutputLimit)
+
+	// Network reconciliation
+	var reconciler *provider.NetworkReconciler
+	if cfg.ReconcileFunctionNetworks && dockerProvider.CanConnectGateway() {
+		listFunctionNetworks := func() ([]string, error) {
+			functions, err := st.ListFunctions()
+			if err != nil {
+				return nil, err
+			}
+			networks := make([]string, 0, len(functions))
+			for _, fn := range functions {
+				if fn.Network != "" {
+					networks = append(networks, fn.Network)
+				}
+			}
+			return networks, nil
+		}
+
+		reconciler = provider.NewNetworkReconciler(
+			dockerProvider.DockerClient(),
+			dockerProvider.GetGatewayID(),
+			logger,
+			cfg.ReconcileIntervalSeconds,
+			listFunctionNetworks,
+		)
+
+		ctx := context.Background()
+		attached, err := reconciler.ReconcileOnce(ctx)
+		if err != nil {
+			logger.Errorf("Startup network reconciliation failed: %v", err)
+		} else if attached > 0 {
+			logger.Infof("Startup reconciliation: connected to %d networks", attached)
+		}
+
+		if cfg.ReconcileIntervalSeconds > 0 {
+			reconciler.StartPeriodic(ctx)
+		}
+	}
+
 	gw.SetConfigView(&gateway.ConfigView{
 		AuthEnabled:                  cfg.AuthEnabled,
 		RequireAuthForFunctions:      cfg.RequireAuthForFunctions,
@@ -193,11 +232,16 @@ func main() {
 
 	logger.Info("Shutting down server...")
 
+	// Stop reconciler if running
+	if reconciler != nil {
+		reconciler.Stop()
+	}
+
 	// Graceful shutdown
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Errorf("Server shutdown error: %v", err)
 	}
 

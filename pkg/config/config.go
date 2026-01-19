@@ -50,6 +50,10 @@ type Config struct {
 	BuildHistoryLimit     int
 	BuildHistoryRetention time.Duration
 	BuildOutputLimit      int
+
+	// Network reconciliation
+	ReconcileFunctionNetworks bool
+	ReconcileIntervalSeconds  int
 }
 
 // LoadConfig loads configuration from environment variables
@@ -83,9 +87,11 @@ func LoadConfig() *Config {
 		DefaultReplicas:         getIntEnv("DEFAULT_REPLICAS", 1),
 		MaxReplicas:             getIntEnv("MAX_REPLICAS", 10),
 		DebugBindAddress:        getEnv("DEBUG_BIND_ADDRESS", "127.0.0.1"),
-		BuildHistoryLimit:       getIntEnv("BUILD_HISTORY_LIMIT", 100),
-		BuildHistoryRetention:   getDurationEnv("BUILD_HISTORY_RETENTION", 24*time.Hour),
-		BuildOutputLimit:        getIntEnv("BUILD_OUTPUT_LIMIT", 200*1024),
+		BuildHistoryLimit:         getIntEnv("BUILD_HISTORY_LIMIT", 100),
+		BuildHistoryRetention:     getDurationEnv("BUILD_HISTORY_RETENTION", 24*time.Hour),
+		BuildOutputLimit:          getIntEnv("BUILD_OUTPUT_LIMIT", 200*1024),
+		ReconcileFunctionNetworks: getBoolEnv("RECONCILE_FUNCTION_NETWORKS", true),
+		ReconcileIntervalSeconds:  getIntEnv("RECONCILE_INTERVAL_SECONDS", 60),
 	}
 }
 

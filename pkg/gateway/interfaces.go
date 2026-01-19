@@ -34,6 +34,8 @@ type Provider interface {
 	CheckNetwork(ctx context.Context) error
 	DockerClient() *client.Client
 	GetSecretManager() *secrets.SecretManager
+	GetGatewayID() string
+	CanConnectGateway() bool
 }
 
 // Router defines the routing operations used by the gateway.

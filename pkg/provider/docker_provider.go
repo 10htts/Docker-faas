@@ -598,6 +598,16 @@ func (p *DockerProvider) DockerClient() *client.Client {
 	return p.client
 }
 
+// GetGatewayID returns the gateway container ID
+func (p *DockerProvider) GetGatewayID() string {
+	return p.gatewayID
+}
+
+// CanConnectGateway returns true if gateway network connection is enabled
+func (p *DockerProvider) CanConnectGateway() bool {
+	return p.connectGateway && p.gatewayID != ""
+}
+
 // GetSecretManager returns the secret manager instance
 func (p *DockerProvider) GetSecretManager() *secrets.SecretManager {
 	return p.secretManager

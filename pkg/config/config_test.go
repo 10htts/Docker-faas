@@ -27,6 +27,8 @@ func TestLoadConfig(t *testing.T) {
 		assert.Equal(t, "docker-faas.db", cfg.StateDBPath)
 		assert.Equal(t, 1, cfg.DefaultReplicas)
 		assert.Equal(t, 10, cfg.MaxReplicas)
+		assert.Equal(t, true, cfg.ReconcileFunctionNetworks)
+		assert.Equal(t, 60, cfg.ReconcileIntervalSeconds)
 	})
 
 	t.Run("CustomValues", func(t *testing.T) {
@@ -43,6 +45,8 @@ func TestLoadConfig(t *testing.T) {
 		os.Setenv("DEFAULT_REPLICAS", "3")
 		os.Setenv("MAX_REPLICAS", "20")
 		os.Setenv("READ_TIMEOUT", "30s")
+		os.Setenv("RECONCILE_FUNCTION_NETWORKS", "false")
+		os.Setenv("RECONCILE_INTERVAL_SECONDS", "120")
 
 		cfg := LoadConfig()
 
@@ -59,6 +63,8 @@ func TestLoadConfig(t *testing.T) {
 		assert.Equal(t, 3, cfg.DefaultReplicas)
 		assert.Equal(t, 20, cfg.MaxReplicas)
 		assert.Equal(t, 30*time.Second, cfg.ReadTimeout)
+		assert.Equal(t, false, cfg.ReconcileFunctionNetworks)
+		assert.Equal(t, 120, cfg.ReconcileIntervalSeconds)
 
 		os.Clearenv()
 	})

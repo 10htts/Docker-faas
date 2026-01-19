@@ -175,6 +175,14 @@ func (p *fakeProvider) GetSecretManager() *secrets.SecretManager {
 	return nil
 }
 
+func (p *fakeProvider) GetGatewayID() string {
+	return ""
+}
+
+func (p *fakeProvider) CanConnectGateway() bool {
+	return false
+}
+
 type fakeRouter struct {
 	resp         *http.Response
 	err          error
