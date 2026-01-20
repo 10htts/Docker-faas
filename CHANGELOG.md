@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-01-20
+
+### Added
+- Kubernetes resource format support for memory limits (`256Mi`, `1Gi`, `Ki`)
+- Kubernetes millicore format support for CPU limits (`500m`, `1000m`)
+- Comprehensive test suite for resource parsing (27 tests)
+- OpenFaaS contracts documentation explaining custom envelopes
+- Migration guide for docker-faas to OpenFaaS
+- Complete OpenFaaS compatibility report
+
+### Changed
+- Enhanced `parseMemory()` to support both Docker (`256m`) and Kubernetes (`256Mi`) formats
+- Enhanced `parseCPU()` to support both Docker (`0.5`) and Kubernetes (`500m`) formats
+- Updated documentation to use standard OpenFaaS environment variables (`OPENFAAS_URL`)
+- Added token authentication examples to README
+
+### Documentation
+- New guide: `docs/OPENFAAS_CONTRACTS.md` - Function request/response format contracts
+- New guide: `docs/OPENFAAS_MIGRATION.md` - Step-by-step migration from docker-faas to OpenFaaS
+- New guide: `docs/OPENFAAS_COMPATIBILITY.md` - Complete compatibility analysis
+- Updated `.env.example` with client configuration guidance
+- Added token auth examples to README.md
+
+### Fixed
+- Unused `os` import in integration tests
+
 ## [2.1.0] - 2026-01-19
 
 ### Added
@@ -80,7 +106,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Example functions and stack files
 - Integration test documentation
 
-[Unreleased]: https://github.com/docker-faas/docker-faas/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/docker-faas/docker-faas/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/docker-faas/docker-faas/releases/tag/v2.2.0
 [2.1.0]: https://github.com/docker-faas/docker-faas/releases/tag/v2.1.0
 [2.0.0]: https://github.com/docker-faas/docker-faas/releases/tag/v2.0.0
 [1.0.0]: https://github.com/docker-faas/docker-faas/releases/tag/v1.0.0
