@@ -20,7 +20,11 @@
       "Bash(git add:*)",
       "Bash(git commit -m \"$\\(cat <<''EOF''\ndocs: update changelog and configuration for v2.1.0 release\n\n- Add network reconciliation feature to CHANGELOG\n- Document RECONCILE_FUNCTION_NETWORKS and RECONCILE_INTERVAL_SECONDS env vars\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(git tag:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nci: update GitHub Actions to latest versions\n\n- actions/setup-go@v4 → @v5\n- actions/cache@v3 → @v4\n- actions/upload-artifact@v3 → @v4\n- codecov/codecov-action@v3 → @v4\n\nFixes deprecated action errors in CI pipeline.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nci: install docker-compose for integration tests\n\nUbuntu runners no longer include docker-compose by default.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git fetch:*)",
+      "Bash(gh run list:*)"
     ]
   }
 }
