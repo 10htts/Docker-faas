@@ -37,6 +37,7 @@ Default credentials:
 
 ### Deploy a Function
 
+#### Using Basic Auth
 ```bash
 faas-cli login --gateway http://localhost:8080 --username admin --password admin
 
@@ -49,7 +50,22 @@ faas-cli deploy \
 echo "Hello" | faas-cli invoke echo --gateway http://localhost:8080
 ```
 
-Auth note: `/function/*` requires Basic Auth by default. Set `REQUIRE_AUTH_FOR_FUNCTIONS=false` for OpenFaaS compatibility.
+#### Using Token Auth (Alternative)
+```bash
+# Obtain a token via the REST API
+TOKEN=$(curl -X POST http://localhost:8080/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin"}' | jq -r '.token')
+
+# Use token with faas-cli (set via environment variable)
+export OPENFAAS_URL=http://localhost:8080
+# Token support in faas-cli varies; use curl for direct API access:
+curl -X POST http://localhost:8080/function/echo \
+  -H "Authorization: Bearer $TOKEN" \
+  -d "Hello"
+```
+
+Auth note: `/function/*` requires auth by default. Set `REQUIRE_AUTH_FOR_FUNCTIONS=false` for OpenFaaS compatibility without authentication.
 
 ## Documentation
 

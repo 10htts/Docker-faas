@@ -755,20 +755,37 @@ func isNetworkInUseErr(err error) bool {
 }
 
 func parseMemory(mem string) int64 {
-	// Simple parser for memory strings like "128m", "1g"
-	mem = strings.TrimSpace(strings.ToLower(mem))
+	// Parser for memory strings supporting both Docker and Kubernetes formats:
+	// Docker: "128m", "1g", "256k"
+	// Kubernetes: "128Mi", "1Gi", "256Ki"
+	mem = strings.TrimSpace(mem)
 	if mem == "" {
 		return 0
 	}
 
+	memLower := strings.ToLower(mem)
 	multiplier := int64(1)
-	if strings.HasSuffix(mem, "k") {
+
+	// Check for Kubernetes binary units (Ki, Mi, Gi) - case insensitive
+	if strings.HasSuffix(memLower, "ki") {
+		multiplier = 1024
+		mem = mem[:len(mem)-2]
+	} else if strings.HasSuffix(memLower, "mi") {
+		multiplier = 1024 * 1024
+		mem = mem[:len(mem)-2]
+	} else if strings.HasSuffix(memLower, "gi") {
+		multiplier = 1024 * 1024 * 1024
+		mem = mem[:len(mem)-2]
+	} else if strings.HasSuffix(memLower, "k") {
+		// Docker format
 		multiplier = 1024
 		mem = mem[:len(mem)-1]
-	} else if strings.HasSuffix(mem, "m") {
+	} else if strings.HasSuffix(memLower, "m") {
+		// Docker format
 		multiplier = 1024 * 1024
 		mem = mem[:len(mem)-1]
-	} else if strings.HasSuffix(mem, "g") {
+	} else if strings.HasSuffix(memLower, "g") {
+		// Docker format
 		multiplier = 1024 * 1024 * 1024
 		mem = mem[:len(mem)-1]
 	}
@@ -779,7 +796,26 @@ func parseMemory(mem string) int64 {
 }
 
 func parseCPU(cpu string) int64 {
-	// Parse CPU strings like "0.5", "1", "2"
+	// Parser for CPU strings supporting both Docker and Kubernetes formats:
+	// Docker: "0.5", "1", "2" (CPU cores as decimal)
+	// Kubernetes: "500m", "1000m" (millicores)
+	cpu = strings.TrimSpace(cpu)
+	if cpu == "" {
+		return 0
+	}
+
+	cpuLower := strings.ToLower(cpu)
+
+	// Check for Kubernetes millicore format
+	if strings.HasSuffix(cpuLower, "m") {
+		cpu = cpu[:len(cpu)-1]
+		var millicores int64
+		fmt.Sscanf(cpu, "%d", &millicores)
+		// Convert millicores to nano CPUs (1 millicore = 0.001 CPU = 1,000,000 nano CPUs)
+		return millicores * 1e6
+	}
+
+	// Docker decimal format
 	var value float64
 	fmt.Sscanf(cpu, "%f", &value)
 	return int64(value * 1e9) // Convert to nano CPUs
