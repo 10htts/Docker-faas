@@ -23,6 +23,9 @@ RUN apt-get update && apt-get install -y ca-certificates sqlite3 libsqlite3-0 gi
 
 WORKDIR /root/
 
+# Create data directories for database
+RUN mkdir -p /data && chmod 777 /data && mkdir -p /root/data && chmod 777 /root/data
+
 # Copy the binary from builder
 COPY --from=builder /app/docker-faas-gateway .
 

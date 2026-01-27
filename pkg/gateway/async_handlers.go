@@ -5,6 +5,8 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -15,6 +17,48 @@ func (g *Gateway) HandleInvokeFunctionAsync(w http.ResponseWriter, r *http.Reque
 	if err := validateFunctionName(functionName); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+
+	// Get function metadata
+	fn, err := g.store.GetFunction(functionName)
+	if err != nil {
+		http.Error(w, "Function not found", http.StatusNotFound)
+		return
+	}
+
+	// Check if function needs to scale up from zero
+	containers, err := g.provider.GetFunctionContainers(r.Context(), functionName)
+	if err != nil {
+		g.logger.Errorf("Failed to get containers for function %s: %v", functionName, err)
+		http.Error(w, "Failed to get function containers", http.StatusInternalServerError)
+		return
+	}
+
+	availableReplicas := 0
+	for _, c := range containers {
+		if strings.Contains(c.Status, "running") || strings.Contains(c.Status, "Up") {
+			availableReplicas++
+		}
+	}
+
+	if availableReplicas == 0 {
+		g.logger.Infof("Scaling function %s from zero for async invocation...", functionName)
+
+		// Start the container
+		if err := g.scaleFromZero(r.Context(), fn); err != nil {
+			g.logger.Errorf("Failed to scale function %s from zero: %v", functionName, err)
+			http.Error(w, "Failed to scale function", http.StatusInternalServerError)
+			return
+		}
+
+		// Wait for container to be ready (with timeout)
+		if err := g.waitForFunctionReady(r.Context(), functionName, 30*time.Second); err != nil {
+			g.logger.Errorf("Function %s failed to start: %v", functionName, err)
+			http.Error(w, "Function failed to start", http.StatusGatewayTimeout)
+			return
+		}
+
+		g.logger.Infof("Function %s scaled from zero and ready for async invocation", functionName)
 	}
 
 	body, err := io.ReadAll(r.Body)

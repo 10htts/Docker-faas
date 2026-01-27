@@ -582,6 +582,48 @@ func (g *Gateway) HandleInvokeFunction(w http.ResponseWriter, r *http.Request) {
 
 	startTime := time.Now()
 
+	// Get function metadata
+	fn, err := g.store.GetFunction(functionName)
+	if err != nil {
+		http.Error(w, "Function not found", http.StatusNotFound)
+		return
+	}
+
+	// CRITICAL: Check if function needs to scale up from zero
+	containers, err := g.provider.GetFunctionContainers(r.Context(), functionName)
+	if err != nil {
+		g.logger.Errorf("Failed to get containers for function %s: %v", functionName, err)
+		http.Error(w, "Failed to get function containers", http.StatusInternalServerError)
+		return
+	}
+
+	availableReplicas := 0
+	for _, c := range containers {
+		if strings.Contains(c.Status, "running") || strings.Contains(c.Status, "Up") {
+			availableReplicas++
+		}
+	}
+
+	if availableReplicas == 0 {
+		g.logger.Infof("Scaling function %s from zero...", functionName)
+
+		// Start the container
+		if err := g.scaleFromZero(r.Context(), fn); err != nil {
+			g.logger.Errorf("Failed to scale function %s from zero: %v", functionName, err)
+			http.Error(w, fmt.Sprintf("Failed to scale function: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Wait for container to be ready (with timeout)
+		if err := g.waitForFunctionReady(r.Context(), functionName, 30*time.Second); err != nil {
+			g.logger.Errorf("Function %s failed to start: %v", functionName, err)
+			http.Error(w, fmt.Sprintf("Function failed to start: %v", err), http.StatusGatewayTimeout)
+			return
+		}
+
+		g.logger.Infof("Function %s scaled from zero and ready", functionName)
+	}
+
 	// Read request body
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -693,6 +735,97 @@ func (g *Gateway) HandleHealthz(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusServiceUnavailable)
 	w.Write([]byte("Unhealthy"))
+}
+
+// scaleFromZero scales a function from zero replicas to one replica
+func (g *Gateway) scaleFromZero(ctx context.Context, fn *types.FunctionMetadata) error {
+	// Build deployment spec from stored metadata
+	deployment := &types.FunctionDeployment{
+		Service:                fn.Name,
+		Image:                  fn.Image,
+		Network:                fn.Network,
+		EnvProcess:             fn.EnvProcess,
+		EnvVars:                store.DecodeMap(fn.EnvVars),
+		Labels:                 store.DecodeMap(fn.Labels),
+		Secrets:                store.DecodeSlice(fn.Secrets),
+		ReadOnlyRootFilesystem: fn.ReadOnly,
+		Debug:                  fn.Debug,
+	}
+
+	// Parse limits if present
+	if fn.Limits != "" {
+		var limits types.FunctionLimits
+		if err := json.Unmarshal([]byte(fn.Limits), &limits); err == nil {
+			deployment.Limits = &limits
+		}
+	}
+
+	// Parse requests if present
+	if fn.Requests != "" {
+		var requests types.FunctionResources
+		if err := json.Unmarshal([]byte(fn.Requests), &requests); err == nil {
+			deployment.Requests = &requests
+		}
+	}
+
+	// Scale to 1 replica
+	targetReplicas := 1
+	if err := g.provider.ScaleFunction(ctx, deployment, targetReplicas); err != nil {
+		return fmt.Errorf("failed to scale function: %w", err)
+	}
+
+	// Update replicas in store
+	if err := g.store.UpdateReplicas(fn.Name, targetReplicas); err != nil {
+		g.logger.Warnf("Failed to update replicas in store for %s: %v", fn.Name, err)
+	}
+
+	// Update metrics
+	metrics.UpdateFunctionReplicas(fn.Name, targetReplicas)
+
+	return nil
+}
+
+// waitForFunctionReady waits for a function to have at least one running container
+func (g *Gateway) waitForFunctionReady(ctx context.Context, functionName string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			// Check if function has running containers
+			if g.isContainerHealthy(ctx, functionName) {
+				return nil
+			}
+
+			if time.Now().After(deadline) {
+				return fmt.Errorf("timeout waiting for function to be ready")
+			}
+		}
+	}
+}
+
+// isContainerHealthy checks if at least one container is running for the function
+func (g *Gateway) isContainerHealthy(ctx context.Context, functionName string) bool {
+	containers, err := g.provider.GetFunctionContainers(ctx, functionName)
+	if err != nil {
+		g.logger.Debugf("Failed to get containers for %s during health check: %v", functionName, err)
+		return false
+	}
+
+	// Check if at least one container is running
+	for _, c := range containers {
+		if strings.Contains(c.Status, "running") || strings.Contains(c.Status, "Up") {
+			// Container is running, consider it healthy
+			g.logger.Debugf("Container %s for function %s is healthy (status: %s)", c.Name, functionName, c.Status)
+			return true
+		}
+	}
+
+	return false
 }
 
 // writeJSON writes a JSON response
