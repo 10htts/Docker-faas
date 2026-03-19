@@ -52,3 +52,10 @@ examples/**/*.zip
 tests/ui/node_modules/
 tests/ui/playwright-report/
 tests/ui/test-results/
+
+# Build artifacts in root (should live in bin/)
+docker-faas-gateway
+gateway
+
+# FreeFileSync database
+*.ffs_db

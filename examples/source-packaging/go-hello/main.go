@@ -14,6 +14,5 @@ func main() {
         fmt.Println("Hello from docker-faas (go). No input provided.")
         return
     }
-    fmt.Printf("Hello from docker-faas (go). Input: %s
-", payload)
+    fmt.Printf("Hello from docker-faas (go). Input: %s\n", payload)
 }

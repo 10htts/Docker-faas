@@ -110,6 +110,7 @@ type fakeProvider struct {
 	cleanupErr    error
 	healthErr     error
 	networkErr    error
+	containers    []*types.Container
 
 	deployCalled       bool
 	scaleCalled        bool
@@ -144,6 +145,9 @@ func (p *fakeProvider) ScaleFunction(ctx context.Context, deployment *types.Func
 func (p *fakeProvider) GetFunctionContainers(ctx context.Context, functionName string) ([]*types.Container, error) {
 	if p.containersErr != nil {
 		return nil, p.containersErr
+	}
+	if p.containers != nil {
+		return p.containers, nil
 	}
 	return []*types.Container{}, nil
 }
@@ -284,8 +288,12 @@ func TestHandleInvokeFunction_RoutesRequest(t *testing.T) {
 		Body:       io.NopCloser(strings.NewReader("pong")),
 	}
 
-	fs := &fakeStore{functions: make(map[string]*types.FunctionMetadata)}
-	fp := &fakeProvider{}
+	fs := &fakeStore{functions: map[string]*types.FunctionMetadata{
+		"hello": {Name: "hello", Image: "alpine:latest", Replicas: 1},
+	}}
+	fp := &fakeProvider{
+		containers: []*types.Container{{Name: "hello", Status: "running"}},
+	}
 	fr := &fakeRouter{resp: response}
 	gw := newTestGateway(fs, fp, fr)
 

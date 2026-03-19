@@ -24,7 +24,24 @@
       "Bash(git commit -m \"$\\(cat <<''EOF''\nci: update GitHub Actions to latest versions\n\n- actions/setup-go@v4 → @v5\n- actions/cache@v3 → @v4\n- actions/upload-artifact@v3 → @v4\n- codecov/codecov-action@v3 → @v4\n\nFixes deprecated action errors in CI pipeline.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(git commit -m \"$\\(cat <<''EOF''\nci: install docker-compose for integration tests\n\nUbuntu runners no longer include docker-compose by default.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(git fetch:*)",
-      "Bash(gh run list:*)"
+      "Bash(gh run list:*)",
+      "Bash(git commit:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker inspect:*)",
+      "Bash(set GOOS=linux)",
+      "Bash(set GOARCH=amd64)",
+      "Bash(docker cp:*)",
+      "Bash(docker restart:*)",
+      "Bash(docker stop:*)",
+      "Bash(docker start:*)",
+      "Bash(docker update:*)",
+      "Bash(CGO_ENABLED=1 GOOS=linux GOARCH=amd64 CC=x86_64-linux-musl-gcc go build:*)",
+      "Bash(docker run:*)",
+      "Bash(docker build:*)",
+      "Bash(docker rm:*)",
+      "Bash(docker network connect:*)",
+      "Bash(docker volume inspect:*)",
+      "Bash(git mv:*)"
     ]
   }
 }

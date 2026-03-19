@@ -2,6 +2,8 @@
 
 These templates are lightweight starting points for the `docker-faas.yaml` flow. Each directory is a complete build context.
 
+They intentionally align with the built-in, generic manifest runtimes in Docker FaaS. If your function repo needs language-specific optimization such as Python `uv`, repo-level `ruff` checks, distroless Go builds, or Rust, switch to a custom `Dockerfile` and follow `docs/RUNTIME_RECIPES.md`.
+
 ## Templates
 
 1. `python-basic` - Minimal Python handler.

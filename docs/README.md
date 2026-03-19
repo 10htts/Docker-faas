@@ -18,9 +18,14 @@ Complete documentation for Docker FaaS - a lightweight, production-ready FaaS pl
 #### Guides
 - **[Deployment Guide](DEPLOYMENT.md)** - Production deployment scenarios (Docker Compose, Swarm, standalone)
 - **[Source Packaging](SOURCE_PACKAGING.md)** - Build functions from source (zip upload, Git repositories)
+- **[Runtime Build Recipes](RUNTIME_RECIPES.md)** - Language-specific guidance for efficient Python, Go, Node, Bash, and Rust builds
 - **[Web UI Guide](WEB_UI.md)** - Using the web interface for function management
 - **[Secrets Management](SECRETS.md)** - Secure secret storage and injection
 - **[Source Examples](SOURCE_EXAMPLES.md)** - Example functions and language templates
+- **[Scale-From-Zero](SCALE_FROM_ZERO.md)** - Automatic function startup on invocation
+- **[OpenFaaS Compatibility](OPENFAAS_COMPATIBILITY.md)** - Compatibility matrix and status
+- **[OpenFaaS Migration](OPENFAAS_MIGRATION.md)** - Migrating from docker-faas to OpenFaaS
+- **[OpenFaaS Contracts](OPENFAAS_CONTRACTS.md)** - Function request/response formats
 - **[Release Process](RELEASING.md)** - How to cut tagged releases
 - **[Release Notes](RELEASE_NOTES.md)** - Highlights for the latest release
 
@@ -44,6 +49,7 @@ Complete documentation for Docker FaaS - a lightweight, production-ready FaaS pl
   - [Enhancement Reports](archived/ENHANCEMENTS_REPORT.md)
   - [Release Notes v2](archived/RELEASE_NOTES_V2.md)
   - [Validation Summary](archived/VALIDATION_SUMMARY.md)
+  - [OpenFaaS Compatibility Summary](archived/OPENFAAS_COMPATIBILITY_SUMMARY.md)
 
 ## Documentation by Role
 
@@ -52,6 +58,7 @@ Complete documentation for Docker FaaS - a lightweight, production-ready FaaS pl
 2. Learn about [function deployment](SOURCE_PACKAGING.md)
 3. Explore the [Web UI](WEB_UI.md)
 4. Reference the [API docs](API.md) for CLI/automation
+5. Use [Runtime Build Recipes](RUNTIME_RECIPES.md) when the function repo needs runtime-specific optimization
 
 ### For Operators
 1. Review [Production Readiness](PRODUCTION_READINESS.md)
@@ -63,7 +70,8 @@ Complete documentation for Docker FaaS - a lightweight, production-ready FaaS pl
 1. Understand the [Architecture](ARCHITECTURE.md)
 2. Read [Contributing Guide](../CONTRIBUTING.md)
 3. Check [Source Examples](SOURCE_EXAMPLES.md) for templates
-4. Review [API Reference](API.md) for integration
+4. Review [Runtime Build Recipes](RUNTIME_RECIPES.md) for runtime-specific guidance
+5. Review [API Reference](API.md) for integration
 
 ## Quick Reference
 
@@ -71,6 +79,7 @@ Complete documentation for Docker FaaS - a lightweight, production-ready FaaS pl
 - **Deploy a function**: [Getting Started](GETTING_STARTED.md)
 - **Use secrets**: [Secrets Management](SECRETS.md)
 - **Build from source**: [Source Packaging](SOURCE_PACKAGING.md)
+- **Optimize source builds by runtime**: [Runtime Build Recipes](RUNTIME_RECIPES.md)
 - **Scale functions**: [API Reference](API.md#scaling)
 - **View logs**: [Web UI Guide](WEB_UI.md#logs) or [API Reference](API.md#logs)
 
@@ -82,6 +91,7 @@ Complete documentation for Docker FaaS - a lightweight, production-ready FaaS pl
 ### Troubleshooting
 - **Deployment issues**: [Deployment Guide](DEPLOYMENT.md)
 - **Build failures**: [Source Packaging](SOURCE_PACKAGING.md)
+- **Runtime-specific optimization**: [Runtime Build Recipes](RUNTIME_RECIPES.md)
 - **Performance tuning**: [Production Readiness](PRODUCTION_READINESS.md)
 
 ## Examples

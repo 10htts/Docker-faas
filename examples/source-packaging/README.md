@@ -1,8 +1,8 @@
 # Source Packaging Examples
 
-These examples are designed for the Option 1 source build flow. Each example is a full build context with a `docker-faas.yaml` manifest.
+These examples are designed for the Option 1 source build flow. Each example is a full build context that contains either a `docker-faas.yaml` manifest or a root-level `Dockerfile`.
 
-## Examples
+## Manifest Examples
 
 1. `python-hello` - Minimal Python stdin handler.
 2. `python-polars` - Uses Polars for CSV summarization.
@@ -10,6 +10,10 @@ These examples are designed for the Option 1 source build flow. Each example is 
 4. `go-hello` - Go stdin handler with build steps.
 5. `node-hello` - Node stdin handler.
 6. `bash-uppercase` - Bash example that uppercases input.
+
+## Custom Dockerfile Examples
+
+1. `python-uv` - Python example that keeps `uv` and `ruff` choices in the function repo.
 
 ## Templates
 
@@ -24,7 +28,7 @@ Starter templates live in `examples/source-packaging/templates/`:
 
 ## Zip Packaging
 
-Zip the contents of an example directory (not the parent folder), then upload the zip file. The root of the zip should contain `docker-faas.yaml`.
+Zip the contents of an example directory (not the parent folder), then upload the zip file. The root of the zip should contain either `docker-faas.yaml` or `Dockerfile`.
 
 Example:
 ```bash

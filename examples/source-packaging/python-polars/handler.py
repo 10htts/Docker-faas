@@ -5,10 +5,7 @@ import polars as pl
 
 
 def summarize_csv(text: str) -> str:
-    data = text.strip() or "name,value
-alpha,10
-beta,20
-"
+    data = text.strip() or "name,value\nalpha,10\nbeta,20\n"
     try:
         df = pl.read_csv(StringIO(data))
     except Exception as exc:

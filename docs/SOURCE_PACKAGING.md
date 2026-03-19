@@ -4,6 +4,8 @@ This guide defines how to package a function so it can be built from a zip uploa
 
 Status: Proposed (Option 1: source-to-image build).
 
+For runtime-specific optimization guidance, see [Runtime Build Recipes](RUNTIME_RECIPES.md). Use this guide when the default manifest-generated Dockerfiles are not enough for your function repo.
+
 ## Single Source of Truth
 
 The source package is the single source of truth. The builder always uses the repo or zip contents as the build context. The resulting image is an internal artifact and does not need to be authored by the user.
@@ -20,6 +22,13 @@ The source package is the single source of truth. The builder always uses the re
 ## Recommended: Dockerfile (Zero Guesswork)
 
 If `Dockerfile` exists at the root, the builder uses it as-is. This is the most reliable way to avoid auto-detection surprises.
+
+Use a custom `Dockerfile` when you need language-specific tooling or optimizations that Docker FaaS does not generate for you by default, such as:
+
+- Python `uv` or repo-level `ruff` workflows
+- Distroless or scratch-style Go builds
+- `pnpm` or Yarn for Node.js
+- Rust or any other runtime not built into `docker-faas.yaml`
 
 Minimum requirements for the Dockerfile:
 - The container listens on port 8080.
@@ -86,6 +95,8 @@ CMD ["/app/app"]
 ## Manifest-Based Builds (docker-faas.yaml)
 
 If you do not want to include a Dockerfile, include a manifest so the builder knows exactly how to build the function. This avoids guessing by file detection and keeps a single source of truth in the repo.
+
+Manifest-generated builds intentionally stay generic. They are a good default for quick starts, examples, and simple handlers. If your function repo needs tighter build control, move to a custom `Dockerfile` instead of trying to turn the generic runtime into a repo-specific policy engine.
 
 Manifest name: `docker-faas.yaml`
 

@@ -5,6 +5,7 @@ Docker-native Function-as-a-Service (FaaS) gateway compatible with OpenFaaS and 
 ## Highlights
 
 - OpenFaaS-compatible API and `faas-cli` workflows
+- Scale-from-zero: functions auto-start on invocation
 - Web UI for deploy, monitor, logs, secrets, and debug
 - Source packaging (zip/Git) and builder templates
 - Security hardening: cap drop, no-new-privileges, per-function networks
@@ -77,6 +78,9 @@ Auth note: `/function/*` requires auth by default. Set `REQUIRE_AUTH_FOR_FUNCTIO
 - **[Architecture](docs/ARCHITECTURE.md)** - System design and components
 - **[Deployment Guide](docs/DEPLOYMENT.md)** - Production deployment scenarios
 - **[Configuration](docs/CONFIGURATION.md)** - Environment variables and settings
+- **[Runtime Build Recipes](docs/RUNTIME_RECIPES.md)** - Language-specific guidance for efficient Python, Go, Node, Bash, and Rust builds
+- **[Scale-From-Zero](docs/SCALE_FROM_ZERO.md)** - Automatic function startup on invocation
+- **[OpenFaaS Compatibility](docs/OPENFAAS_COMPATIBILITY.md)** - Compatibility matrix and migration guide
 - **[Web UI Guide](docs/WEB_UI.md)** - Using the web interface
 - **[Source Packaging](docs/SOURCE_PACKAGING.md)** - Build from zip/Git sources
 - **[Production Readiness](docs/PRODUCTION_READINESS.md)** - Production deployment checklist

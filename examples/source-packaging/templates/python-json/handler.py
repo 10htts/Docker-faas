@@ -5,7 +5,7 @@ import sys
 def main():
     payload = sys.stdin.read().strip()
     if not payload:
-        print("python-json: {"status": "empty"}")
+        print(json.dumps({"status": "empty"}))
         return
 
     try:

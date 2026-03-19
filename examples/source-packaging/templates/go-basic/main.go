@@ -14,6 +14,5 @@ func main() {
         fmt.Println("go-basic: hello")
         return
     }
-    fmt.Printf("go-basic: %s
-", payload)
+    fmt.Printf("go-basic: %s\n", payload)
 }

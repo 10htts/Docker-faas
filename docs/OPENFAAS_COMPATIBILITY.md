@@ -174,7 +174,8 @@ AUTH_PASSWORD=admin
 | **Orchestration** |
 | Platform | Kubernetes | Docker | ⚠️ Different | By design |
 | State | etcd/K8s | SQLite | ⚠️ Different | By design |
-| Scaling | HPA | Manual | ⚠️ Different | By design |
+| Scaling | HPA | Manual + scale-from-zero | ⚠️ Different | By design |
+| Scale-from-zero | ✅ Supported | ✅ Supported | ✅ Compatible | Implemented in v2.2.0 |
 
 **Legend**:
 - ✅ **Compatible**: Works the same on both platforms
@@ -364,7 +365,7 @@ The remaining differences are **architectural** (Docker vs Kubernetes) and **int
 2. ✅ **Done**: Add resource format parsing
 3. ✅ **Done**: Add comprehensive tests
 4. ✅ **Done**: Create migration guide
-5. ⏳ **Optional**: Add scale-to-zero support (nice to have)
+5. ✅ **Done**: Scale-from-zero support (implemented in v2.2.0, see [SCALE_FROM_ZERO.md](SCALE_FROM_ZERO.md))
 6. ⏳ **Optional**: Add metrics endpoint compatibility (nice to have)
 
 ---
@@ -377,6 +378,7 @@ The remaining differences are **architectural** (Docker vs Kubernetes) and **int
 | 1.1 | 2026-01-20 | Added token auth discovery |
 | 1.2 | 2026-01-20 | Added resource format implementation |
 | 1.3 | 2026-01-20 | Added migration guide |
+| 2.1 | 2026-03-19 | Added scale-from-zero (v2.2.0) |
 | 2.0 | 2026-01-20 | **Final: 100% compatibility achieved** |
 
 ---
