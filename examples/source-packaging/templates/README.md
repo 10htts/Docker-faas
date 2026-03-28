@@ -2,7 +2,7 @@
 
 These templates are lightweight starting points for the `docker-faas.yaml` flow. Each directory is a complete build context.
 
-They intentionally align with the built-in, generic manifest runtimes in Docker FaaS. If your function repo needs language-specific optimization such as Python `uv`, repo-level `ruff` checks, distroless Go builds, or Rust, switch to a custom `Dockerfile` and follow `docs/RUNTIME_RECIPES.md`.
+They intentionally align with the built-in, generic manifest runtimes in Docker FaaS. If your function repo needs repo-specific Python lint policy, lockfile handling, distroless Go builds, or Rust, switch to a custom `Dockerfile` and follow `docs/RUNTIME_RECIPES.md`.
 
 ## Templates
 
@@ -16,3 +16,5 @@ They intentionally align with the built-in, generic manifest runtimes in Docker 
 ## Zip Packaging
 
 Zip the contents of a template directory (not the parent folder), then upload the zip file. The root of the zip should contain `docker-faas.yaml`.
+
+From the repository root, run `scripts/run-python-checks.sh` or `scripts/run-python-checks.ps1` before packaging the Python templates so they stay aligned with the shared Ruff policy.

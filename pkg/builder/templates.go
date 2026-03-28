@@ -35,16 +35,16 @@ func GenerateDockerfile(manifest *Manifest, contextDir string) (string, error) {
 }
 
 func pythonDockerfile(manifest *Manifest, contextDir string) string {
-	installDeps := ""
 	if hasFile(contextDir, "requirements.txt") || includesDependency(manifest.Dependencies, "requirements.txt") {
-		installDeps = "RUN pip install --no-cache-dir -r requirements.txt\n"
-	}
+		return fmt.Sprintf(`FROM python:3.11-slim AS deps
 
-	return fmt.Sprintf(`FROM python:3.11-slim
+WORKDIR /tmp/deps
+COPY requirements.txt ./
+RUN pip install --no-cache-dir uv && \
+    uv pip install --system --compile -r requirements.txt
 
-WORKDIR /home/app
-COPY . .
-%s
+FROM python:3.11-slim
+
 RUN apt-get update && apt-get install -y curl ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN ARCH="$(uname -m)" && \
   case "$ARCH" in \
@@ -56,12 +56,42 @@ RUN ARCH="$(uname -m)" && \
   curl -sSL -o /usr/local/bin/fwatchdog "https://github.com/openfaas/of-watchdog/releases/download/%s/${WATCHDOG}" && \
   chmod +x /usr/local/bin/fwatchdog
 
+WORKDIR /home/app
+COPY . .
+COPY --from=deps /usr/local /usr/local
+RUN python -m compileall /home/app
+
 ENV fprocess="%s"
 ENV mode="streaming"
 
 EXPOSE 8080
 CMD ["fwatchdog"]
-`, installDeps, fwatchdogVersion, manifest.Command)
+`, fwatchdogVersion, manifest.Command)
+	}
+
+	return fmt.Sprintf(`FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y curl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN ARCH="$(uname -m)" && \
+  case "$ARCH" in \
+    x86_64|amd64) WATCHDOG="fwatchdog-amd64" ;; \
+    aarch64|arm64) WATCHDOG="fwatchdog-arm64" ;; \
+    armv7l|armv7|armhf) WATCHDOG="fwatchdog-arm" ;; \
+    *) echo "Unsupported arch: $ARCH" >&2; exit 1 ;; \
+  esac && \
+  curl -sSL -o /usr/local/bin/fwatchdog "https://github.com/openfaas/of-watchdog/releases/download/%s/${WATCHDOG}" && \
+  chmod +x /usr/local/bin/fwatchdog
+
+WORKDIR /home/app
+COPY . .
+RUN python -m compileall /home/app
+
+ENV fprocess="%s"
+ENV mode="streaming"
+
+EXPOSE 8080
+CMD ["fwatchdog"]
+`, fwatchdogVersion, manifest.Command)
 }
 
 func nodeDockerfile(manifest *Manifest, contextDir string) string {

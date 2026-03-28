@@ -25,7 +25,7 @@ If `Dockerfile` exists at the root, the builder uses it as-is. This is the most 
 
 Use a custom `Dockerfile` when you need language-specific tooling or optimizations that Docker FaaS does not generate for you by default, such as:
 
-- Python `uv` or repo-level `ruff` workflows
+- Repo-level Python `ruff` workflows or lockfile-specific build policy
 - Distroless or scratch-style Go builds
 - `pnpm` or Yarn for Node.js
 - Rust or any other runtime not built into `docker-faas.yaml`
@@ -47,13 +47,20 @@ my-python-func/
 
 Dockerfile:
 ```dockerfile
+FROM python:3.11-slim AS builder
+
+WORKDIR /home/app
+COPY pyproject.toml requirements.txt ./
+RUN pip install --no-cache-dir uv \
+  && uv pip install --system --compile -r requirements.txt
+COPY handler.py ./
+RUN python -m compileall /home/app
+
 FROM python:3.11-slim
 
 WORKDIR /home/app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY handler.py /home/app/handler.py
+COPY --from=builder /usr/local /usr/local
+COPY --from=builder /home/app /home/app
 
 ENV fprocess="python /home/app/handler.py"
 ENV mode="http"
@@ -97,6 +104,8 @@ CMD ["/app/app"]
 If you do not want to include a Dockerfile, include a manifest so the builder knows exactly how to build the function. This avoids guessing by file detection and keeps a single source of truth in the repo.
 
 Manifest-generated builds intentionally stay generic. They are a good default for quick starts, examples, and simple handlers. If your function repo needs tighter build control, move to a custom `Dockerfile` instead of trying to turn the generic runtime into a repo-specific policy engine.
+
+For Python manifests with `requirements.txt`, the generated Dockerfile now uses `uv pip install --system --compile` and precompiles application bytecode. Shared Ruff validation for the bundled Python examples and templates lives in the repository root `pyproject.toml` plus `scripts/run-python-checks.sh` and `scripts/run-python-checks.ps1`.
 
 Manifest name: `docker-faas.yaml`
 

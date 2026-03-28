@@ -4,7 +4,7 @@ This example shows a Python function repo that uses a custom `Dockerfile` for ru
 
 Use it when you want the function repo to own Python tooling choices such as:
 
-- `uv` for dependency installation
+- a custom `uv` dependency flow
 - `ruff` configuration in `pyproject.toml`
 - a custom Docker build sequence instead of the generic manifest runtime
 
@@ -28,3 +28,4 @@ ruff check .
 ruff format --check .
 ```
 
+The repository root also ships `scripts/run-python-checks.sh` and `scripts/run-python-checks.ps1` for validating all bundled Python examples and templates together.

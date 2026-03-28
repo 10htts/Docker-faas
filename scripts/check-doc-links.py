@@ -5,7 +5,6 @@ import re
 import sys
 from urllib.parse import urlparse
 
-
 SKIP_DIRS = {".git", ".claude", "tmp", "bin", "backups", "node_modules"}
 INLINE_LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 REF_LINK_RE = re.compile(r"^\s*\[[^\]]+\]:\s*(\S+)")

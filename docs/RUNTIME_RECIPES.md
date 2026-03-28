@@ -36,7 +36,7 @@ Current manifest-generated builds behave like this:
 
 | Runtime | Built-in manifest support | Current generated behavior | Move to custom `Dockerfile` when... |
 | --- | --- | --- | --- |
-| Python | Yes | `python:3.11-slim`; installs `requirements.txt` with `pip` when present | You want `uv`, bytecode pre-compilation, wheel caching, OS packages, or repo-specific lint gates |
+| Python | Yes | `python:3.11-slim`; installs `requirements.txt` with `uv pip install --system --compile` when present | You want repo-specific `ruff` policy, lockfiles, OS packages, or a fully custom build sequence |
 | Go | Yes | `golang:1.22` build stage with default `go mod download` and `go build -o app ./` | You want a smaller runtime image, a static binary, or stricter release flags |
 | Node | Yes | `node:20-slim`; uses `npm ci` when `package-lock.json` exists, otherwise `npm install` | You want `pnpm`, Yarn, native build packages, or aggressive dependency pruning |
 | Bash | Yes | `debian:bookworm-slim` with Bash and `of-watchdog` | You need a different shell toolchain or a smaller custom base image |
@@ -48,11 +48,10 @@ Use the manifest runtime for simple handlers and examples. It is intentionally g
 
 Move to a custom `Dockerfile` when your function repo needs:
 
-- `uv` instead of `pip`
-- `ruff` checks or formatting in repo CI
-- Pre-built wheels or bytecode compilation
+- Repo-specific `ruff` checks or formatting in CI
+- Lockfile-driven dependency policy or extra Python build tooling
 - Native system packages
-- A tighter cold-start or image-size budget
+- A tighter cold-start or image-size budget than the built-in runtime provides
 
 Recommended repo-level process:
 
@@ -63,13 +62,14 @@ Recommended repo-level process:
 Practical guidance:
 
 - Put `pyproject.toml`, `requirements.txt`, and any lockfile in the function repo.
-- Treat `ruff` as a repo policy, not a Docker FaaS policy.
+- Treat `ruff` as a repo policy, even though Docker FaaS now uses `uv` for built-in Python dependency installation.
 - Keep generated caches and virtual environments out of the build context.
-- If you need `uv`, make that part of the function repo's `Dockerfile` and CI, not the platform default for every user.
+- Run lint and format checks before packaging source builds.
 
 Bundled example:
 
 - `examples/source-packaging/python-uv/` shows a custom-Dockerfile Python source build that keeps `uv` and `ruff` ownership in the function repo.
+- `scripts/run-python-checks.sh` and `scripts/run-python-checks.ps1` run the shared Ruff policy for the bundled Python examples and templates.
 
 ## Go
 

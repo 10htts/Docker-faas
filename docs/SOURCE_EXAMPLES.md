@@ -19,7 +19,7 @@ Located under `examples/source-packaging/`. These examples use `docker-faas.yaml
 
 Located under `examples/source-packaging/`. These examples rely on a root-level `Dockerfile` instead of `docker-faas.yaml`:
 
-1. `python-uv` - Python example that keeps `uv` and `ruff` choices in the function repo.
+1. `python-uv` - Python example that keeps custom `uv` and `ruff` choices in the function repo.
 
 ## Templates (starter packs)
 
@@ -32,7 +32,9 @@ Located under `examples/source-packaging/templates/`:
 5. `node-basic` - Node handler with `package.json`.
 6. `bash-basic` - Bash handler skeleton.
 
-These templates are intentionally minimal. If you want language-specific tooling such as `uv`, `ruff`, distroless Go binaries, or a Rust build pipeline, start with a custom `Dockerfile` in your function repo and use [Runtime Build Recipes](RUNTIME_RECIPES.md) as the reference.
+These templates are intentionally minimal. If you want repo-specific Python lint policy, lockfile handling, distroless Go binaries, or a Rust build pipeline, start with a custom `Dockerfile` in your function repo and use [Runtime Build Recipes](RUNTIME_RECIPES.md) as the reference.
+
+Before packaging the bundled Python examples or templates from this repository, run `scripts/run-python-checks.sh` or `scripts/run-python-checks.ps1` to apply the shared Ruff validation policy.
 
 ## Zip Packaging
 

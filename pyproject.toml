@@ -1,6 +1,11 @@
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+force-exclude = true
+extend-exclude = [
+  "backups",
+  "tmp",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]

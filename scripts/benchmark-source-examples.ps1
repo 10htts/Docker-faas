@@ -4,7 +4,8 @@ param(
     [string]$Password = "admin",
     [int]$ScaleFromZeroRuns = 3,
     [string[]]$ExampleId = @(),
-    [string]$OutputPath = ""
+    [string]$OutputPath = "",
+    [switch]$SkipPythonChecks
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,6 +15,11 @@ Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+
+if (-not $SkipPythonChecks) {
+    Write-Host "Running Python example checks..." -ForegroundColor Cyan
+    & (Join-Path $PSScriptRoot "run-python-checks.ps1")
+}
 
 $examples = @(
     @{

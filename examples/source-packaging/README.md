@@ -13,7 +13,7 @@ These examples are designed for the Option 1 source build flow. Each example is 
 
 ## Custom Dockerfile Examples
 
-1. `python-uv` - Python example that keeps `uv` and `ruff` choices in the function repo.
+1. `python-uv` - Python example that keeps custom `uv` and `ruff` choices in the function repo.
 
 ## Templates
 
@@ -29,6 +29,8 @@ Starter templates live in `examples/source-packaging/templates/`:
 ## Zip Packaging
 
 Zip the contents of an example directory (not the parent folder), then upload the zip file. The root of the zip should contain either `docker-faas.yaml` or `Dockerfile`.
+
+For the Python examples in this repository, run `scripts/run-python-checks.sh` or `scripts/run-python-checks.ps1` from the repo root before packaging to validate them against the shared Ruff policy.
 
 Example:
 ```bash
