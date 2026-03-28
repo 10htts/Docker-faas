@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -49,6 +51,12 @@ type DockerProvider struct {
 	gatewayID        string
 	connectGateway   bool
 	debugBindAddress string
+}
+
+type replicaScalePlan struct {
+	staleToRemove         []container.Summary
+	activeToRemove        []container.Summary
+	missingReplicaIndices []int
 }
 
 // NewDockerProvider creates a new Docker provider
@@ -391,6 +399,10 @@ func (p *DockerProvider) createContainer(ctx context.Context, deployment *faasTy
 		},
 	}
 
+	if err := p.removeStaleContainerByName(ctx, name); err != nil {
+		return err
+	}
+
 	// Create container
 	resp, err := p.client.ContainerCreate(ctx, containerConfig, hostConfig, networkConfig, nil, name)
 	if err != nil {
@@ -452,23 +464,27 @@ func (p *DockerProvider) ScaleFunction(ctx context.Context, deployment *faasType
 		return fmt.Errorf("failed to list containers: %w", err)
 	}
 
-	currentReplicas := len(containers)
+	plan := buildReplicaScalePlan(containers, targetReplicas)
 
-	if targetReplicas > currentReplicas {
-		// Scale up: create new containers
-		for i := currentReplicas; i < targetReplicas; i++ {
-			containerName := fmt.Sprintf("%s-%d", deployment.Service, i)
-			if err := p.createContainer(ctx, deployment, containerName, i); err != nil {
-				return fmt.Errorf("failed to create container: %w", err)
-			}
+	for _, stale := range plan.staleToRemove {
+		name := containerSummaryName(stale)
+		p.logger.Warnf("Removing stale replica container for %s: %s (state=%s status=%s)", deployment.Service, name, stale.State, stale.Status)
+		if err := p.removeContainerSummary(ctx, stale); err != nil {
+			return fmt.Errorf("failed to remove stale container %s: %w", name, err)
 		}
-	} else if targetReplicas < currentReplicas {
-		// Scale down: remove excess containers
-		for i := targetReplicas; i < currentReplicas; i++ {
-			containerName := fmt.Sprintf("%s-%d", deployment.Service, i)
-			if err := p.removeContainer(ctx, containerName); err != nil {
-				p.logger.Warnf("Failed to remove container %s: %v", containerName, err)
-			}
+	}
+
+	for _, existing := range plan.activeToRemove {
+		name := containerSummaryName(existing)
+		if err := p.removeContainerSummary(ctx, existing); err != nil {
+			return fmt.Errorf("failed to remove excess container %s: %w", name, err)
+		}
+	}
+
+	for _, replicaIndex := range plan.missingReplicaIndices {
+		containerName := fmt.Sprintf("%s-%d", deployment.Service, replicaIndex)
+		if err := p.createContainer(ctx, deployment, containerName, replicaIndex); err != nil {
+			return fmt.Errorf("failed to create container %s: %w", containerName, err)
 		}
 	}
 
@@ -477,12 +493,22 @@ func (p *DockerProvider) ScaleFunction(ctx context.Context, deployment *faasType
 
 // removeContainer removes a specific container by name
 func (p *DockerProvider) removeContainer(ctx context.Context, name string) error {
-	timeout := int(10)
-	if err := p.client.ContainerStop(ctx, name, container.StopOptions{Timeout: &timeout}); err != nil {
-		return fmt.Errorf("failed to stop container: %w", err)
+	inspect, err := p.client.ContainerInspect(ctx, name)
+	if err != nil {
+		if errdefs.IsNotFound(err) || isContainerNotFoundErr(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to inspect container: %w", err)
 	}
 
-	if err := p.client.ContainerRemove(ctx, name, container.RemoveOptions{Force: true}); err != nil {
+	if inspect.State != nil && inspect.State.Running {
+		timeout := int(10)
+		if err := p.client.ContainerStop(ctx, inspect.ID, container.StopOptions{Timeout: &timeout}); err != nil && !errdefs.IsNotFound(err) && !isContainerNotFoundErr(err) {
+			return fmt.Errorf("failed to stop container: %w", err)
+		}
+	}
+
+	if err := p.client.ContainerRemove(ctx, inspect.ID, container.RemoveOptions{Force: true}); err != nil && !errdefs.IsNotFound(err) && !isContainerNotFoundErr(err) {
 		return fmt.Errorf("failed to remove container: %w", err)
 	}
 
@@ -554,6 +580,49 @@ func (p *DockerProvider) GetFunctionContainers(ctx context.Context, functionName
 	}
 
 	return result, nil
+}
+
+func (p *DockerProvider) removeStaleContainerByName(ctx context.Context, name string) error {
+	inspect, err := p.client.ContainerInspect(ctx, name)
+	if err != nil {
+		if errdefs.IsNotFound(err) || isContainerNotFoundErr(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to inspect existing container %s: %w", name, err)
+	}
+
+	state := ""
+	if inspect.State != nil {
+		state = inspect.State.Status
+	}
+	if !isContainerStaleState(state, state) {
+		if state == "" {
+			state = "unknown"
+		}
+		return fmt.Errorf("container %s already exists with state %s", name, state)
+	}
+
+	p.logger.Warnf("Removing stale existing container %s before recreate (state: %s)", name, state)
+	if err := p.client.ContainerRemove(ctx, inspect.ID, container.RemoveOptions{Force: true}); err != nil && !errdefs.IsNotFound(err) && !isContainerNotFoundErr(err) {
+		return fmt.Errorf("failed to remove stale existing container %s: %w", name, err)
+	}
+
+	return nil
+}
+
+func (p *DockerProvider) removeContainerSummary(ctx context.Context, summary container.Summary) error {
+	if isContainerRunningSummary(summary) {
+		timeout := int(10)
+		if err := p.client.ContainerStop(ctx, summary.ID, container.StopOptions{Timeout: &timeout}); err != nil && !errdefs.IsNotFound(err) && !isContainerNotFoundErr(err) {
+			return fmt.Errorf("failed to stop container: %w", err)
+		}
+	}
+
+	if err := p.client.ContainerRemove(ctx, summary.ID, container.RemoveOptions{Force: true}); err != nil && !errdefs.IsNotFound(err) && !isContainerNotFoundErr(err) {
+		return fmt.Errorf("failed to remove container: %w", err)
+	}
+
+	return nil
 }
 
 // GetContainerLogs retrieves logs from a function container
@@ -728,6 +797,171 @@ func isAlreadyConnectedErr(err error) bool {
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "already exists") || strings.Contains(msg, "already connected")
+}
+
+func isContainerNotFoundErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "no such container") || strings.Contains(msg, "container not found")
+}
+
+func buildReplicaScalePlan(containers []container.Summary, targetReplicas int) replicaScalePlan {
+	plan := replicaScalePlan{
+		staleToRemove:         make([]container.Summary, 0),
+		activeToRemove:        make([]container.Summary, 0),
+		missingReplicaIndices: make([]int, 0),
+	}
+
+	grouped := make(map[int][]container.Summary)
+	for _, c := range containers {
+		if isContainerStaleSummary(c) {
+			plan.staleToRemove = append(plan.staleToRemove, c)
+			continue
+		}
+
+		replicaIndex, ok := containerReplicaIndex(c)
+		if !ok {
+			if targetReplicas == 0 {
+				plan.activeToRemove = append(plan.activeToRemove, c)
+			}
+			continue
+		}
+
+		grouped[replicaIndex] = append(grouped[replicaIndex], c)
+	}
+
+	keepers := make(map[int]container.Summary, len(grouped))
+	for replicaIndex, group := range grouped {
+		keeper := selectReplicaKeeper(group)
+		keepers[replicaIndex] = keeper
+
+		for _, c := range group {
+			if c.ID != keeper.ID {
+				plan.activeToRemove = append(plan.activeToRemove, c)
+			}
+		}
+	}
+
+	for replicaIndex := 0; replicaIndex < targetReplicas; replicaIndex++ {
+		if _, ok := keepers[replicaIndex]; !ok {
+			plan.missingReplicaIndices = append(plan.missingReplicaIndices, replicaIndex)
+		}
+	}
+
+	excessReplicaIndices := make([]int, 0)
+	for replicaIndex := range keepers {
+		if replicaIndex >= targetReplicas {
+			excessReplicaIndices = append(excessReplicaIndices, replicaIndex)
+		}
+	}
+	sort.Ints(excessReplicaIndices)
+	for _, replicaIndex := range excessReplicaIndices {
+		plan.activeToRemove = append(plan.activeToRemove, keepers[replicaIndex])
+	}
+
+	return plan
+}
+
+func selectReplicaKeeper(group []container.Summary) container.Summary {
+	keeper := group[0]
+	for _, candidate := range group[1:] {
+		candidateRunning := isContainerRunningSummary(candidate)
+		keeperRunning := isContainerRunningSummary(keeper)
+
+		if candidateRunning && !keeperRunning {
+			keeper = candidate
+			continue
+		}
+
+		if candidateRunning == keeperRunning && candidate.Created > keeper.Created {
+			keeper = candidate
+		}
+	}
+
+	return keeper
+}
+
+func containerReplicaIndex(summary container.Summary) (int, bool) {
+	if summary.Labels != nil {
+		if labelValue, ok := summary.Labels[LabelReplica]; ok {
+			replicaIndex, err := strconv.Atoi(strings.TrimSpace(labelValue))
+			if err == nil {
+				return replicaIndex, true
+			}
+		}
+	}
+
+	for _, name := range summary.Names {
+		if replicaIndex, ok := parseReplicaIndex(name); ok {
+			return replicaIndex, true
+		}
+	}
+
+	return 0, false
+}
+
+func parseReplicaIndex(name string) (int, bool) {
+	trimmed := strings.TrimPrefix(strings.TrimSpace(name), "/")
+	if trimmed == "" {
+		return 0, false
+	}
+
+	sep := strings.LastIndex(trimmed, "-")
+	if sep == -1 || sep == len(trimmed)-1 {
+		return 0, false
+	}
+
+	replicaIndex, err := strconv.Atoi(trimmed[sep+1:])
+	if err != nil {
+		return 0, false
+	}
+
+	return replicaIndex, true
+}
+
+func isContainerRunningSummary(summary container.Summary) bool {
+	return isContainerRunningState(summary.State, summary.Status)
+}
+
+func isContainerStaleSummary(summary container.Summary) bool {
+	return isContainerStaleState(summary.State, summary.Status)
+}
+
+func isContainerRunningState(state, status string) bool {
+	state = strings.ToLower(strings.TrimSpace(state))
+	if state == "running" {
+		return true
+	}
+
+	status = strings.ToLower(strings.TrimSpace(status))
+	return strings.Contains(status, "running") || strings.HasPrefix(status, "up ")
+}
+
+func isContainerStaleState(state, status string) bool {
+	state = strings.ToLower(strings.TrimSpace(state))
+	switch state {
+	case "created", "exited", "dead":
+		return true
+	}
+
+	status = strings.ToLower(strings.TrimSpace(status))
+	return strings.Contains(status, "created") || strings.Contains(status, "exited") || strings.Contains(status, "dead")
+}
+
+func containerSummaryName(summary container.Summary) string {
+	for _, name := range summary.Names {
+		if trimmed := strings.TrimPrefix(name, "/"); trimmed != "" {
+			return trimmed
+		}
+	}
+
+	if len(summary.ID) >= 12 {
+		return summary.ID[:12]
+	}
+
+	return summary.ID
 }
 
 func isNotConnectedErr(err error) bool {

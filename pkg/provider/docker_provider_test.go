@@ -1,7 +1,11 @@
 package provider
 
 import (
+	"reflect"
+	"sort"
 	"testing"
+
+	"github.com/docker/docker/api/types/container"
 )
 
 func TestParseMemory(t *testing.T) {
@@ -129,4 +133,140 @@ func TestResourceFormatCompatibility(t *testing.T) {
 				tt.docker, dockerResult, tt.kubernetes, kubeResult)
 		}
 	}
+}
+
+func TestBuildReplicaScalePlan_RemovesStaleStoppedReplicaAndRecreatesMissingIndex(t *testing.T) {
+	t.Parallel()
+
+	plan := buildReplicaScalePlan([]container.Summary{
+		{
+			ID:     "stale-0",
+			Names:  []string{"/import-bundle-0"},
+			Labels: map[string]string{LabelReplica: "0"},
+			State:  "exited",
+			Status: "Exited (137) 8 days ago",
+		},
+	}, 1)
+
+	if got := replicaIndices(plan.missingReplicaIndices); !reflect.DeepEqual(got, []int{0}) {
+		t.Fatalf("missingReplicaIndices = %v, want [0]", got)
+	}
+	if got := containerNames(plan.staleToRemove); !reflect.DeepEqual(got, []string{"import-bundle-0"}) {
+		t.Fatalf("staleToRemove = %v, want [import-bundle-0]", got)
+	}
+	if len(plan.activeToRemove) != 0 {
+		t.Fatalf("expected no active containers to remove, got %v", containerNames(plan.activeToRemove))
+	}
+}
+
+func TestBuildReplicaScalePlan_FillsReplicaGapsAndRemovesExcessRunningContainers(t *testing.T) {
+	t.Parallel()
+
+	plan := buildReplicaScalePlan([]container.Summary{
+		{
+			ID:      "run-0",
+			Names:   []string{"/hello-0"},
+			Labels:  map[string]string{LabelReplica: "0"},
+			State:   "running",
+			Status:  "Up 2 minutes",
+			Created: 100,
+		},
+		{
+			ID:      "run-2",
+			Names:   []string{"/hello-2"},
+			Labels:  map[string]string{LabelReplica: "2"},
+			State:   "running",
+			Status:  "Up 1 minute",
+			Created: 200,
+		},
+	}, 2)
+
+	if got := replicaIndices(plan.missingReplicaIndices); !reflect.DeepEqual(got, []int{1}) {
+		t.Fatalf("missingReplicaIndices = %v, want [1]", got)
+	}
+	if len(plan.staleToRemove) != 0 {
+		t.Fatalf("expected no stale containers to remove, got %v", containerNames(plan.staleToRemove))
+	}
+	if got := containerNames(plan.activeToRemove); !reflect.DeepEqual(got, []string{"hello-2"}) {
+		t.Fatalf("activeToRemove = %v, want [hello-2]", got)
+	}
+}
+
+func TestBuildReplicaScalePlan_KeepsNewestRunningReplicaAndRemovesDuplicates(t *testing.T) {
+	t.Parallel()
+
+	plan := buildReplicaScalePlan([]container.Summary{
+		{
+			ID:      "old-running",
+			Names:   []string{"/echo-0"},
+			Labels:  map[string]string{LabelReplica: "0"},
+			State:   "running",
+			Status:  "Up 10 minutes",
+			Created: 100,
+		},
+		{
+			ID:      "new-running",
+			Names:   []string{"/echo-0"},
+			Labels:  map[string]string{LabelReplica: "0"},
+			State:   "running",
+			Status:  "Up 1 minute",
+			Created: 200,
+		},
+		{
+			ID:      "stale-1",
+			Names:   []string{"/echo-1"},
+			Labels:  map[string]string{LabelReplica: "1"},
+			State:   "dead",
+			Status:  "Dead",
+			Created: 50,
+		},
+	}, 1)
+
+	if len(plan.missingReplicaIndices) != 0 {
+		t.Fatalf("expected no missing replica indices, got %v", plan.missingReplicaIndices)
+	}
+	if got := containerIDs(plan.activeToRemove); !reflect.DeepEqual(got, []string{"old-running"}) {
+		t.Fatalf("activeToRemove IDs = %v, want [old-running]", got)
+	}
+	if got := containerNames(plan.staleToRemove); !reflect.DeepEqual(got, []string{"echo-1"}) {
+		t.Fatalf("staleToRemove = %v, want [echo-1]", got)
+	}
+}
+
+func TestContainerReplicaIndex_FallsBackToContainerName(t *testing.T) {
+	t.Parallel()
+
+	replicaIndex, ok := containerReplicaIndex(container.Summary{
+		Names: []string{"/reporter-7"},
+	})
+	if !ok {
+		t.Fatal("expected replica index to be parsed from container name")
+	}
+	if replicaIndex != 7 {
+		t.Fatalf("replicaIndex = %d, want 7", replicaIndex)
+	}
+}
+
+func replicaIndices(indices []int) []int {
+	cloned := append([]int(nil), indices...)
+	sort.Ints(cloned)
+	return cloned
+}
+
+func containerNames(containers []container.Summary) []string {
+	names := make([]string, 0, len(containers))
+	for _, summary := range containers {
+		names = append(names, containerSummaryName(summary))
+	}
+	sort.Strings(names)
+	return names
+}
+
+func containerIDs(containers []container.Summary) []string {
+	ids := make([]string, 0, len(containers))
+	for _, summary := range containers {
+		ids = append(ids, summary.ID)
+	}
+	sort.Strings(ids)
+	return ids
 }
