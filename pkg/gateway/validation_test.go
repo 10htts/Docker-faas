@@ -18,6 +18,23 @@ func TestValidateFunctionName(t *testing.T) {
 	}
 }
 
+func TestValidateNamespace(t *testing.T) {
+	for _, valid := range []string{"", DefaultFunctionNamespace} {
+		if err := validateNamespace(valid); err != nil {
+			t.Fatalf("expected namespace %q to be valid, got %v", valid, err)
+		}
+	}
+	for _, invalid := range []string{"prod", "openfaas", "OPENFAAS-FN", "openfaas-fn "} {
+		err := validateNamespace(invalid)
+		if err == nil {
+			t.Fatalf("expected namespace %q to be rejected", invalid)
+		}
+		if err.Error() != "namespace not valid" {
+			t.Fatalf("expected pinned error text 'namespace not valid', got %q", err.Error())
+		}
+	}
+}
+
 func TestValidateGitURL(t *testing.T) {
 	valid := []string{
 		"https://8.8.8.8/repo.git",

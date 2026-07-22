@@ -1,0 +1,11 @@
+{
+  "contract_version": "1.0.0",
+  "provider": "docker-faas",
+  "orchestration": "docker",
+  "idle_scale_to_zero": true,
+  "scale_from_zero": true,
+  "kubernetes": {
+    "supported": false,
+    "reason": "not selected; Docker is the required first target and no Kubernetes production claim is made from this provider"
+  }
+}

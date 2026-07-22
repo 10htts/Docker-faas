@@ -107,7 +107,170 @@ var (
 		},
 		[]string{"function_name"},
 	)
+
+	// --- Idle scale-to-zero metrics (SZ-09) ---
+
+	// FunctionObservedReplicas tracks the PROVIDER-OBSERVED running replica
+	// count per function (as opposed to the desired FunctionReplicas gauge).
+	FunctionObservedReplicas = promauto.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "function_observed_replicas",
+			Help: "Provider-observed running replica count per function",
+		},
+		[]string{"function_name"},
+	)
+
+	// FunctionColdStartsTotal counts scale-from-zero cold starts per function.
+	FunctionColdStartsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "function_cold_starts_total",
+			Help: "Total scale-from-zero cold starts per function",
+		},
+		[]string{"function_name", "result"},
+	)
+
+	// FunctionColdStartDurationSeconds measures cold-start latency per function.
+	FunctionColdStartDurationSeconds = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "function_cold_start_duration_seconds",
+			Help:    "Duration of scale-from-zero cold starts in seconds",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"function_name"},
+	)
+
+	// FunctionIdleReclamationsTotal counts idle scale-to-zero reclamations.
+	FunctionIdleReclamationsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "function_idle_reclamations_total",
+			Help: "Total idle scale-to-zero reclamations per function",
+		},
+		[]string{"function_name"},
+	)
+
+	// FunctionReclaimedContainersTotal counts containers removed by reclamation.
+	FunctionReclaimedContainersTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "function_reclaimed_containers_total",
+			Help: "Total containers removed by idle reclamation per function",
+		},
+		[]string{"function_name"},
+	)
+
+	// FunctionReclaimedNetworksTotal counts per-function networks removed.
+	FunctionReclaimedNetworksTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "function_reclaimed_networks_total",
+			Help: "Total per-function networks removed by idle reclamation",
+		},
+		[]string{"function_name"},
+	)
+
+	// FunctionReclaimedMemoryBytesTotal counts memory-limit bytes reclaimed.
+	FunctionReclaimedMemoryBytesTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "function_reclaimed_memory_bytes_total",
+			Help: "Total container memory-limit bytes reclaimed by idle reclamation",
+		},
+		[]string{"function_name"},
+	)
+
+	// FunctionReclaimedNanoCPUsTotal counts nano-CPU capacity reclaimed.
+	FunctionReclaimedNanoCPUsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "function_reclaimed_nano_cpus_total",
+			Help: "Total container nano-CPU capacity reclaimed by idle reclamation",
+		},
+		[]string{"function_name"},
+	)
+
+	// FunctionStaleGenerationsCleanedTotal counts stale-generation cleanups.
+	FunctionStaleGenerationsCleanedTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "function_stale_generations_cleaned_total",
+			Help: "Total stale generation/lease entries cleaned per function",
+		},
+		[]string{"function_name"},
+	)
+
+	// FunctionScaleDecisionsTotal counts idle decisions by outcome.
+	FunctionScaleDecisionsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "function_scale_decisions_total",
+			Help: "Total idle scale decisions per function and decision",
+		},
+		[]string{"function_name", "decision"},
+	)
+
+	// ActivityLeasesTotal counts activity-lease requests by result.
+	ActivityLeasesTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "function_activity_leases_total",
+			Help: "Total activity-lease requests received by result",
+		},
+		[]string{"result"},
+	)
+
+	// IdleReconcilePassesTotal counts completed idle reconcile passes.
+	IdleReconcilePassesTotal = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "function_idle_reconcile_passes_total",
+			Help: "Total completed idle reconcile passes",
+		},
+	)
 )
+
+// RecordColdStart records a cold-start outcome and latency.
+func RecordColdStart(functionName, result string, duration float64) {
+	FunctionColdStartsTotal.WithLabelValues(functionName, result).Inc()
+	if result == "success" {
+		FunctionColdStartDurationSeconds.WithLabelValues(functionName).Observe(duration)
+	}
+}
+
+// UpdateFunctionObservedReplicas sets the provider-observed replica gauge.
+func UpdateFunctionObservedReplicas(functionName string, replicas int) {
+	FunctionObservedReplicas.WithLabelValues(functionName).Set(float64(replicas))
+}
+
+// RecordIdleReclamation records an idle reclamation and the resources freed.
+func RecordIdleReclamation(functionName string, containers, networks int, memoryBytes, nanoCPUs int64) {
+	FunctionIdleReclamationsTotal.WithLabelValues(functionName).Inc()
+	if containers > 0 {
+		FunctionReclaimedContainersTotal.WithLabelValues(functionName).Add(float64(containers))
+	}
+	if networks > 0 {
+		FunctionReclaimedNetworksTotal.WithLabelValues(functionName).Add(float64(networks))
+	}
+	if memoryBytes > 0 {
+		FunctionReclaimedMemoryBytesTotal.WithLabelValues(functionName).Add(float64(memoryBytes))
+	}
+	if nanoCPUs > 0 {
+		FunctionReclaimedNanoCPUsTotal.WithLabelValues(functionName).Add(float64(nanoCPUs))
+	}
+}
+
+// RecordStaleGenerationsCleaned records stale generation/lease cleanup.
+func RecordStaleGenerationsCleaned(functionName string, count int) {
+	if count > 0 {
+		FunctionStaleGenerationsCleanedTotal.WithLabelValues(functionName).Add(float64(count))
+	}
+}
+
+// RecordScaleDecision records an idle decision outcome.
+func RecordScaleDecision(functionName, decision string) {
+	FunctionScaleDecisionsTotal.WithLabelValues(functionName, decision).Inc()
+}
+
+// RecordActivityLease records an activity-lease request result.
+func RecordActivityLease(result string) {
+	ActivityLeasesTotal.WithLabelValues(result).Inc()
+}
+
+// RecordIdleReconcilePass records a completed idle reconcile pass.
+func RecordIdleReconcilePass() {
+	IdleReconcilePassesTotal.Inc()
+}
 
 // RecordFunctionInvocation records a function invocation with duration and status
 func RecordFunctionInvocation(functionName string, statusCode int, duration float64) {
@@ -156,4 +319,5 @@ func UpdateFunctionReplicas(functionName string, replicas int) {
 // DeleteFunctionMetrics removes metrics for a deleted function
 func DeleteFunctionMetrics(functionName string) {
 	FunctionReplicas.DeleteLabelValues(functionName)
+	FunctionObservedReplicas.DeleteLabelValues(functionName)
 }

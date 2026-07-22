@@ -57,8 +57,8 @@ func (s *Store) CreateFunction(metadata *types.FunctionMetadata) (err error) {
 	}()
 
 	query := `
-	INSERT INTO functions (name, image, env_process, env_vars, labels, secrets, network, replicas, limits, requests, read_only, debug, created_at, updated_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	INSERT INTO functions (name, image, env_process, env_vars, labels, annotations, secrets, network, replicas, limits, requests, read_only, debug, created_at, updated_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	result, err := s.db.Exec(query,
@@ -67,6 +67,7 @@ func (s *Store) CreateFunction(metadata *types.FunctionMetadata) (err error) {
 		metadata.EnvProcess,
 		metadata.EnvVars,
 		metadata.Labels,
+		metadata.Annotations,
 		metadata.Secrets,
 		metadata.Network,
 		metadata.Replicas,
@@ -98,8 +99,15 @@ func (s *Store) GetFunction(name string) (metadata *types.FunctionMetadata, err 
 		metrics.RecordDBOperation("get_function", time.Since(start).Seconds(), err)
 	}()
 
+	// COALESCE the nullable TEXT columns to '' so a row created before a column
+	// existed (migration 1 declared env_process/env_vars/labels/secrets/limits/
+	// requests as nullable TEXT with no default) or hand-edited to NULL scans
+	// cleanly into the non-pointer string fields instead of erroring.
 	query := `
-	SELECT id, name, image, env_process, env_vars, labels, secrets, network, replicas, limits, requests, read_only, debug, created_at, updated_at
+	SELECT id, name, image,
+	       COALESCE(env_process, ''), COALESCE(env_vars, ''), COALESCE(labels, ''),
+	       COALESCE(annotations, ''), COALESCE(secrets, ''), network, replicas,
+	       COALESCE(limits, ''), COALESCE(requests, ''), read_only, debug, created_at, updated_at
 	FROM functions WHERE name = ?
 	`
 
@@ -111,6 +119,7 @@ func (s *Store) GetFunction(name string) (metadata *types.FunctionMetadata, err 
 		&result.EnvProcess,
 		&result.EnvVars,
 		&result.Labels,
+		&result.Annotations,
 		&result.Secrets,
 		&result.Network,
 		&result.Replicas,
@@ -142,8 +151,13 @@ func (s *Store) ListFunctions() (functions []*types.FunctionMetadata, err error)
 		metrics.RecordDBOperation("list_functions", time.Since(start).Seconds(), err)
 	}()
 
+	// COALESCE nullable TEXT columns to '' (see GetFunction) so legacy/NULL rows
+	// list cleanly.
 	query := `
-	SELECT id, name, image, env_process, env_vars, labels, secrets, network, replicas, limits, requests, read_only, debug, created_at, updated_at
+	SELECT id, name, image,
+	       COALESCE(env_process, ''), COALESCE(env_vars, ''), COALESCE(labels, ''),
+	       COALESCE(annotations, ''), COALESCE(secrets, ''), network, replicas,
+	       COALESCE(limits, ''), COALESCE(requests, ''), read_only, debug, created_at, updated_at
 	FROM functions ORDER BY created_at DESC
 	`
 
@@ -162,6 +176,7 @@ func (s *Store) ListFunctions() (functions []*types.FunctionMetadata, err error)
 			&metadata.EnvProcess,
 			&metadata.EnvVars,
 			&metadata.Labels,
+			&metadata.Annotations,
 			&metadata.Secrets,
 			&metadata.Network,
 			&metadata.Replicas,
@@ -190,7 +205,7 @@ func (s *Store) UpdateFunction(metadata *types.FunctionMetadata) (err error) {
 
 	query := `
 	UPDATE functions
-	SET image = ?, env_process = ?, env_vars = ?, labels = ?, secrets = ?, network = ?, replicas = ?, limits = ?, requests = ?, read_only = ?, debug = ?, updated_at = ?
+	SET image = ?, env_process = ?, env_vars = ?, labels = ?, annotations = ?, secrets = ?, network = ?, replicas = ?, limits = ?, requests = ?, read_only = ?, debug = ?, updated_at = ?
 	WHERE name = ?
 	`
 
@@ -199,6 +214,7 @@ func (s *Store) UpdateFunction(metadata *types.FunctionMetadata) (err error) {
 		metadata.EnvProcess,
 		metadata.EnvVars,
 		metadata.Labels,
+		metadata.Annotations,
 		metadata.Secrets,
 		metadata.Network,
 		metadata.Replicas,

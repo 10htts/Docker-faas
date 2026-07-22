@@ -20,6 +20,7 @@ import (
 	"github.com/docker-faas/docker-faas/pkg/middleware"
 	"github.com/docker-faas/docker-faas/pkg/provider"
 	"github.com/docker-faas/docker-faas/pkg/router"
+	"github.com/docker-faas/docker-faas/pkg/scaletozero"
 	"github.com/docker-faas/docker-faas/pkg/store"
 )
 
@@ -56,6 +57,7 @@ func main() {
 		logger.Fatalf("Failed to initialize Docker provider: %v", err)
 	}
 	defer dockerProvider.Close()
+	dockerProvider.SetStrictOwnership(cfg.StrictContainerOwnership)
 
 	// Initialize router
 	rt := router.NewRouter(dockerProvider, logger, cfg.ReadTimeout, cfg.WriteTimeout, cfg.ExecTimeout)
@@ -66,6 +68,75 @@ func main() {
 	gw.SetAuth(authManager, cfg.AuthUser, cfg.AuthPassword)
 	gw.SetBuildTracker(gateway.NewBuildTracker(cfg.BuildHistoryLimit, cfg.BuildHistoryRetention))
 	gw.SetBuildOutputLimit(cfg.BuildOutputLimit)
+	gw.SetAsyncCallbackPolicy(cfg.AsyncCallbackBlockInternal)
+
+	// Idle scale-to-zero wiring (provider side). The gate/lease registries and
+	// the activity-lease + capability endpoints are always wired so the control
+	// plane can discover capabilities and post durable-work leases, and so the
+	// gateway's authoritative in-flight HTTP accounting always runs. The idle
+	// RECONCILER (which actually reclaims containers) starts only when the
+	// operator/control plane enables it via IDLE_SCALE_TO_ZERO_ENABLED.
+	// Fail closed (CV-06): the activity-lease endpoint authenticates the control
+	// plane with an ISOLATED shared HMAC secret. If idle scale-to-zero is enabled
+	// but the secret is absent, refuse to start rather than expose an endpoint
+	// that would accept unsigned leases.
+	if cfg.IdleScaleToZeroEnabled && cfg.ActivityLeaseSecret == "" {
+		logger.Fatal("IDLE_SCALE_TO_ZERO_ENABLED=true requires FAAS_ACTIVITY_LEASE_SECRET (or FAAS_ACTIVITY_LEASE_SECRET_FILE) to be set: the activity-lease endpoint must HMAC-verify control-plane leases and sign responses (fail-closed)")
+	}
+	if cfg.ActivityLeaseSecret == "" {
+		logger.Warn("FAAS_ACTIVITY_LEASE_SECRET not set: the activity-lease endpoint will reject all requests (503) until an isolated shared secret is configured")
+	}
+
+	idleGates := scaletozero.NewGateRegistry(nil)
+	idleLeases := scaletozero.NewLeaseRegistry(nil)
+	idleController := gateway.NewIdleController(
+		dockerProvider,
+		st,
+		cfg.FunctionsNetwork,
+		gateway.PolicyDefaults{
+			Enabled:      cfg.IdleScaleToZeroEnabled,
+			IdleDuration: time.Duration(cfg.IdleDurationSeconds) * time.Second,
+			MinReplicas:  cfg.IdleWarmMinReplicas,
+			MaxReplicas:  cfg.MaxReplicas,
+		},
+		logger,
+	)
+	// The Docker provider is capable of idle scale-to-zero regardless of whether
+	// it is currently enabled (SZ-05 capability discovery).
+	gw.SetScaleToZero(idleGates, idleLeases, idleController, true, cfg.ActivityLeaseSecret)
+	// RT-214 transport hardening for the activity-lease endpoint: body limit,
+	// issued_at skew window, nonce replay cache, and rotation overlap secret.
+	gw.SetLeaseAuthPolicy(cfg.ActivityLeasePreviousSecret, cfg.ActivityLeaseMaxSkew, cfg.ActivityLeaseBodyLimit, cfg.ActivityLeaseReplayCap)
+	if cfg.ActivityLeaseMaxSkew <= 0 {
+		logger.Warn("FAAS_ACTIVITY_LEASE_MAX_SKEW disabled (<=0): activity-lease requests will not be checked for timestamp freshness; replay window falls back to the built-in default")
+	}
+	if cfg.ActivityLeasePreviousSecret != "" {
+		logger.Info("Activity-lease secret rotation overlap active: requests signed with the previous secret are still accepted; remove FAAS_ACTIVITY_LEASE_SECRET_PREVIOUS after rollover")
+	}
+
+	var idleReconciler *scaletozero.IdleReconciler
+	if cfg.IdleScaleToZeroEnabled {
+		idleReconciler = scaletozero.NewIdleReconciler(scaletozero.ReconcilerConfig{
+			Controller: idleController,
+			Policies:   idleController,
+			Gates:      idleGates,
+			Leases:     idleLeases,
+			Metrics:    scaletozero.PrometheusMetrics{},
+			Logger:     logger,
+			Interval:   time.Duration(cfg.IdleReconcileSeconds) * time.Second,
+		})
+
+		// Startup convergence: reconcile declared vs actual and clean orphan
+		// containers left by a previous process (SZ-07).
+		if _, err := idleReconciler.ReconcileOnce(context.Background()); err != nil {
+			logger.Errorf("Startup idle reconcile failed: %v", err)
+		}
+		idleReconciler.StartPeriodic(context.Background())
+		logger.Infof("Idle scale-to-zero enabled (idle=%ds, reconcile=%ds, warm-min=%d)",
+			cfg.IdleDurationSeconds, cfg.IdleReconcileSeconds, cfg.IdleWarmMinReplicas)
+	} else {
+		logger.Info("Idle scale-to-zero reconciler disabled (set IDLE_SCALE_TO_ZERO_ENABLED=true to enable); capability endpoint and in-flight accounting remain active")
+	}
 
 	// Network reconciliation
 	var reconciler *provider.NetworkReconciler
@@ -139,7 +210,11 @@ func main() {
 	r.HandleFunc("/system/builds/stream", gw.HandleBuildStream).Methods("GET")
 	r.HandleFunc("/system/builds/{id}", gw.HandleGetBuild).Methods("GET")
 	r.HandleFunc("/system/function/{name}/containers", gw.HandleFunctionContainers).Methods("GET")
+	r.HandleFunc("/system/function/{name}", gw.HandleGetFunction).Methods("GET")
+	r.HandleFunc("/system/namespaces", gw.HandleListNamespaces).Methods("GET")
 	r.HandleFunc("/system/scale-function/{name}", gw.HandleScaleFunction).Methods("POST")
+	r.HandleFunc("/system/scale/capabilities", gw.HandleScaleCapabilities).Methods("GET")
+	r.HandleFunc("/system/scale/activity-lease", gw.HandleActivityLease).Methods("POST")
 	r.HandleFunc("/system/logs", gw.HandleGetLogs).Methods("GET")
 	r.HandleFunc("/system/function-async/{name}", gw.HandleInvokeFunctionAsync).Methods("POST", "GET", "PUT", "DELETE", "PATCH")
 	r.Handle("/system/metrics", promhttp.Handler()).Methods("GET")
@@ -232,9 +307,12 @@ func main() {
 
 	logger.Info("Shutting down server...")
 
-	// Stop reconciler if running
+	// Stop reconcilers if running
 	if reconciler != nil {
 		reconciler.Stop()
+	}
+	if idleReconciler != nil {
+		idleReconciler.Stop()
 	}
 
 	// Graceful shutdown

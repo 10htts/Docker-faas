@@ -31,6 +31,21 @@ func TestEncodeDecodeSlice(t *testing.T) {
 	assert.Equal(t, original, decoded)
 }
 
+// TestMigrations_RegisterAnnotationsMigration locks the migration registry:
+// versions are strictly increasing from 1 and the annotations column migration
+// is present, so pre-annotations databases converge on open. (The end-to-end
+// old-schema migration proof lives in store_cgo_test.go and runs where cgo /
+// sqlite is available.)
+func TestMigrations_RegisterAnnotationsMigration(t *testing.T) {
+	assert.NotEmpty(t, Migrations)
+	for i, migration := range Migrations {
+		assert.Equal(t, i+1, migration.Version, "migration versions must be contiguous from 1")
+	}
+	last := Migrations[len(Migrations)-1]
+	assert.Equal(t, 3, last.Version)
+	assert.Contains(t, last.Up, "ADD COLUMN annotations")
+}
+
 func TestEncodeDecodeEmptyValues(t *testing.T) {
 	// Empty map
 	emptyMap, err := EncodeMap(nil)

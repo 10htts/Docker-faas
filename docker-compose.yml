@@ -1,20 +1,20 @@
-version: '3.8'
-
 services:
   gateway:
     build:
       context: .
       dockerfile: Dockerfile
-    image: docker-faas/gateway:latest
-    container_name: docker-faas-gateway
+    image: ${GATEWAY_IMAGE:-docker-faas/gateway:latest}
+    container_name: ${GATEWAY_CONTAINER_NAME:-docker-faas-gateway}
     ports:
-      - "8080:8080"   # Gateway API
-      - "9090:9090"   # Metrics
+      - "${GATEWAY_HOST_BIND:-0.0.0.0}:${GATEWAY_HOST_PORT:-8080}:8080"   # Gateway API
+      - "${METRICS_HOST_BIND:-0.0.0.0}:${METRICS_HOST_PORT:-9090}:9090"   # Metrics
     environment:
       - GATEWAY_PORT=8080
       - METRICS_PORT=9090
-      - FUNCTIONS_NETWORK=docker-faas-net
-      - GATEWAY_CONTAINER_NAME=docker-faas-gateway
+      - FUNCTIONS_NETWORK=${FUNCTIONS_NETWORK:-docker-faas-net}
+      - FAAS_STRICT_CONTAINER_OWNERSHIP=${FAAS_STRICT_CONTAINER_OWNERSHIP:-false}
+      - FAAS_ASYNC_CALLBACK_BLOCK_INTERNAL=${FAAS_ASYNC_CALLBACK_BLOCK_INTERNAL:-false}
+      - GATEWAY_CONTAINER_NAME=${GATEWAY_CONTAINER_NAME:-docker-faas-gateway}
       - AUTH_ENABLED=true
       - AUTH_USER=admin
       - AUTH_PASSWORD=admin
@@ -29,6 +29,16 @@ services:
       - MAX_REPLICAS=10
       # Debug settings - bind to localhost only for security
       - DEBUG_BIND_ADDRESS=127.0.0.1
+      # Idle scale-to-zero (OFF by default; behavior stays plain OpenFaaS).
+      # Enabling REQUIRES the dedicated activity-lease secret (fail-closed).
+      # - IDLE_SCALE_TO_ZERO_ENABLED=true
+      # - IDLE_DURATION_SECONDS=300
+      # - IDLE_RECONCILE_SECONDS=30
+      # - FAAS_ACTIVITY_LEASE_SECRET_FILE=/var/openfaas/secrets/activity-lease-secret
+      # Rotation overlap + transport hardening (see docs/SCALE_EXTENSIONS_CONTRACT.md)
+      # - FAAS_ACTIVITY_LEASE_SECRET_PREVIOUS_FILE=/var/openfaas/secrets/activity-lease-secret-previous
+      # - FAAS_ACTIVITY_LEASE_MAX_SKEW=2m
+      # - FAAS_ACTIVITY_LEASE_BODY_LIMIT=65536
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - faas-data:/data
@@ -46,11 +56,11 @@ services:
 
 networks:
   docker-faas-net:
-    name: docker-faas-net
+    name: ${GATEWAY_NETWORK_NAME:-docker-faas-net}
     driver: bridge
 
 volumes:
   faas-data:
-    name: docker-faas-data
+    name: ${FAAS_DATA_VOLUME:-docker-faas-data}
   faas-secrets:
-    name: docker-faas-secrets
+    name: ${FAAS_SECRETS_VOLUME:-docker-faas-secrets}

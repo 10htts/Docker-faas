@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -20,7 +21,13 @@ type Router struct {
 	readTimeout  time.Duration
 	writeTimeout time.Duration
 	execTimeout  time.Duration
-	roundRobin   map[string]*uint64 // Function name -> counter for round-robin
+	// rrMu guards the roundRobin map. The per-function counter it points at is
+	// bumped with atomics, but the map itself (get-or-create on first request)
+	// must be synchronized: two concurrent first requests writing the map is a
+	// fatal `concurrent map writes` that crashes the process — exactly the
+	// cold-start storm case.
+	rrMu       sync.Mutex
+	roundRobin map[string]*uint64 // Function name -> counter for round-robin
 }
 
 // NewRouter creates a new router instance
@@ -54,14 +61,22 @@ func (r *Router) RouteRequest(ctx context.Context, functionName string, req *htt
 	return r.forwardRequest(ctx, container, req)
 }
 
+// counterFor returns the per-function round-robin counter, creating it under the
+// map lock on first use so concurrent first requests cannot race the map.
+func (r *Router) counterFor(functionName string) *uint64 {
+	r.rrMu.Lock()
+	defer r.rrMu.Unlock()
+	counter, ok := r.roundRobin[functionName]
+	if !ok {
+		counter = new(uint64)
+		r.roundRobin[functionName] = counter
+	}
+	return counter
+}
+
 // selectContainer selects a container using round-robin load balancing
 func (r *Router) selectContainer(functionName string, containers []*types.Container) *types.Container {
-	if _, ok := r.roundRobin[functionName]; !ok {
-		var counter uint64 = 0
-		r.roundRobin[functionName] = &counter
-	}
-
-	counter := r.roundRobin[functionName]
+	counter := r.counterFor(functionName)
 	index := atomic.AddUint64(counter, 1) % uint64(len(containers))
 
 	// Filter for running containers

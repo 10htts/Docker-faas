@@ -1,0 +1,15 @@
+{
+  "contract_version": "1.0.0",
+  "function": "org7f3a-fn-report-nightly",
+  "organization_id": "7a1c9d2e-0000-4000-8000-000000000001",
+  "generation": 42,
+  "admitted": 1,
+  "queued": 3,
+  "running": 2,
+  "temporal_dispatched": 1,
+  "lease_ttl_seconds": 30,
+  "issued_at": "2026-07-21T10:00:00Z",
+  "last_activity_at": "2026-07-21T09:59:58Z",
+  "nonce": "golden-nonce-req-0001",
+  "signature": "2ef54c73cea9dec79b0bb0bea1a769fc51738ff4853fb9bbb19904cbe586061e"
+}

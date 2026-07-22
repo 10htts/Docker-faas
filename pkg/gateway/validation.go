@@ -10,6 +10,11 @@ import (
 
 var functionNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]*$`)
 
+// DefaultFunctionNamespace is the single namespace this provider serves. It
+// matches the default namespace of the pinned reference single-node provider
+// (openfaas/faasd: "openfaas-fn") and the suffix normalizeFunctionName strips.
+const DefaultFunctionNamespace = "openfaas-fn"
+
 func validateFunctionName(name string) error {
 	if name == "" {
 		return fmt.Errorf("function name is required")
@@ -18,6 +23,17 @@ func validateFunctionName(name string) error {
 		return fmt.Errorf("invalid function name: %s", name)
 	}
 	return nil
+}
+
+// validateNamespace accepts the empty namespace (defaulted) or the provider's
+// single default namespace. Any other namespace is rejected with the same
+// error text the pinned reference provider (faasd) uses, and callers answer
+// 400 Bad Request to match it.
+func validateNamespace(namespace string) error {
+	if namespace == "" || namespace == DefaultFunctionNamespace {
+		return nil
+	}
+	return fmt.Errorf("namespace not valid")
 }
 
 func validateGitURL(raw string) error {

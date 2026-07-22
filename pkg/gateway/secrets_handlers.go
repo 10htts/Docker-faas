@@ -9,8 +9,10 @@ import (
 
 // SecretRequest represents a secret create/update request
 type SecretRequest struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace,omitempty"`
+	Value     string `json:"value,omitempty"`
+	RawValue  []byte `json:"rawValue,omitempty"`
 }
 
 // SecretResponse represents a secret in responses
@@ -25,14 +27,22 @@ func (g *Gateway) HandleCreateSecret(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
+	if err := validateNamespace(req.Namespace); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-	if req.Name == "" || req.Value == "" {
+	value := req.Value
+	if len(req.RawValue) > 0 {
+		value = string(req.RawValue)
+	}
+	if req.Name == "" || value == "" {
 		http.Error(w, "Name and value are required", http.StatusBadRequest)
 		return
 	}
 
 	secretManager := g.provider.GetSecretManager()
-	if err := secretManager.CreateSecret(req.Name, req.Value); err != nil {
+	if err := secretManager.CreateSecret(req.Name, value); err != nil {
 		g.logger.Errorf("Failed to create secret: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -48,14 +58,22 @@ func (g *Gateway) HandleUpdateSecret(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
+	if err := validateNamespace(req.Namespace); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
-	if req.Name == "" || req.Value == "" {
+	value := req.Value
+	if len(req.RawValue) > 0 {
+		value = string(req.RawValue)
+	}
+	if req.Name == "" || value == "" {
 		http.Error(w, "Name and value are required", http.StatusBadRequest)
 		return
 	}
 
 	secretManager := g.provider.GetSecretManager()
-	if err := secretManager.UpdateSecret(req.Name, req.Value); err != nil {
+	if err := secretManager.UpdateSecret(req.Name, value); err != nil {
 		g.logger.Errorf("Failed to update secret: %v", err)
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -67,6 +85,22 @@ func (g *Gateway) HandleUpdateSecret(w http.ResponseWriter, r *http.Request) {
 // HandleDeleteSecret handles DELETE /system/secrets
 func (g *Gateway) HandleDeleteSecret(w http.ResponseWriter, r *http.Request) {
 	secretName := r.URL.Query().Get("name")
+	namespace := r.URL.Query().Get("namespace")
+	if r.Body != nil {
+		var payload SecretRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err == nil {
+			if secretName == "" {
+				secretName = payload.Name
+			}
+			if payload.Namespace != "" {
+				namespace = payload.Namespace
+			}
+		}
+	}
+	if err := validateNamespace(namespace); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if secretName == "" {
 		http.Error(w, "name parameter is required", http.StatusBadRequest)
 		return
@@ -79,11 +113,18 @@ func (g *Gateway) HandleDeleteSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	// faas-cli 0.18.0 sends the pinned JSON Secret body on DELETE but accepts
+	// only 200/202 here, despite the OpenAPI entry documenting 204.
+	w.WriteHeader(http.StatusOK)
 }
 
 // HandleListSecrets handles GET /system/secrets
 func (g *Gateway) HandleListSecrets(w http.ResponseWriter, r *http.Request) {
+	if err := validateNamespace(r.URL.Query().Get("namespace")); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	secretManager := g.provider.GetSecretManager()
 	secretNames, err := secretManager.ListSecrets()
 	if err != nil {

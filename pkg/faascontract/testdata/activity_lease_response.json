@@ -1,0 +1,17 @@
+{
+  "contract_version": "1.0.0",
+  "function": "org7f3a-fn-report-nightly",
+  "accepted": true,
+  "generation": 42,
+  "lease_expires_at": "2026-07-21T10:00:30Z",
+  "gateway_in_flight": 0,
+  "durable_in_flight": 6,
+  "total_in_flight": 6,
+  "observed_replicas": 1,
+  "idle_scale_to_zero_supported": true,
+  "decision": "hold",
+  "decision_reason": "durable work in flight: admitted=1 queued=3 running=2 temporal=1",
+  "issued_at": "2026-07-21T10:00:00Z",
+  "nonce": "golden-nonce-resp-0001",
+  "signature": "70272ab7e88ba52cbce1a0330c0d2c3b9114047e0a4e77db61532e25f99310dc"
+}

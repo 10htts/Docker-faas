@@ -32,66 +32,99 @@ type FunctionResources struct {
 	CPU    string `json:"cpu,omitempty"`
 }
 
-// FunctionStatus represents the runtime status of a function
+// FunctionStatus represents the runtime status of a function.
+//
+// The JSON keys mirror github.com/openfaas/faas-provider/types.FunctionStatus
+// at the pinned tag v0.25.12 exactly (name, image, namespace, envProcess,
+// envVars, constraints, secrets, labels, annotations, limits, requests,
+// readOnlyRootFilesystem, invocationCount, replicas, availableReplicas,
+// createdAt, usage). Extra keys (network, debug, updatedAt) are additive
+// extensions and do not collide with pinned names.
 type FunctionStatus struct {
 	Name                   string             `json:"name"`
 	Image                  string             `json:"image"`
-	Replicas               int                `json:"replicas"`
-	AvailableReplicas      int                `json:"availableReplicas"`
-	InvocationCount        int64              `json:"invocationCount"`
+	Namespace              string             `json:"namespace,omitempty"`
 	EnvProcess             string             `json:"envProcess,omitempty"`
 	EnvVars                map[string]string  `json:"envVars,omitempty"`
+	Constraints            []string           `json:"constraints,omitempty"`
+	Secrets                []string           `json:"secrets,omitempty"`
 	Labels                 map[string]string  `json:"labels,omitempty"`
 	Annotations            map[string]string  `json:"annotations,omitempty"`
-	Namespace              string             `json:"namespace,omitempty"`
-	Secrets                []string           `json:"secrets,omitempty"`
-	Network                string             `json:"network,omitempty"`
 	Limits                 *FunctionLimits    `json:"limits,omitempty"`
 	Requests               *FunctionResources `json:"requests,omitempty"`
 	ReadOnlyRootFilesystem bool               `json:"readOnlyRootFilesystem,omitempty"`
-	Debug                  bool               `json:"debug,omitempty"`
+	InvocationCount        int64              `json:"invocationCount"`
+	Replicas               int                `json:"replicas"`
+	AvailableReplicas      int                `json:"availableReplicas"`
 	CreatedAt              time.Time          `json:"createdAt,omitempty"`
-	UpdatedAt              time.Time          `json:"updatedAt,omitempty"`
+	Usage                  *FunctionUsage     `json:"usage,omitempty"`
+
+	// Additive extensions (not part of the pinned faas-provider contract).
+	Network   string    `json:"network,omitempty"`
+	Debug     bool      `json:"debug,omitempty"`
+	UpdatedAt time.Time `json:"updatedAt,omitempty"`
 }
 
-// ScaleServiceRequest defines a scaling request
+// FunctionUsage mirrors faas-provider types.FunctionUsage (pinned v0.25.12).
+type FunctionUsage struct {
+	CPU              float64 `json:"cpu,omitempty"`
+	TotalMemoryBytes float64 `json:"totalMemoryBytes,omitempty"`
+}
+
+// ScaleServiceRequest defines a scaling request. Keys mirror faas-provider
+// v0.25.12 types.ScaleServiceRequest (serviceName, replicas, namespace).
 type ScaleServiceRequest struct {
 	ServiceName string `json:"serviceName"`
 	Replicas    int    `json:"replicas"`
+	Namespace   string `json:"namespace,omitempty"`
 }
 
-// SystemInfo represents gateway system information
+// VersionInfo mirrors faas-provider types.VersionInfo (pinned v0.25.12):
+// keys sha, release, commit_message. commit_date is a legacy additive key.
+type VersionInfo struct {
+	SHA           string `json:"sha"`
+	Release       string `json:"release"`
+	CommitMessage string `json:"commit_message,omitempty"`
+	CommitDate    string `json:"commit_date,omitempty"`
+}
+
+// ProviderInfo mirrors faas-provider types.ProviderInfo (pinned v0.25.12):
+// the provider name is emitted under the pinned key "provider" and, for
+// backwards compatibility with earlier docker-faas clients, additively under
+// the legacy key "name" with the same value.
+type ProviderInfo struct {
+	Name          string       `json:"provider"`
+	LegacyName    string       `json:"name,omitempty"`
+	Orchestration string       `json:"orchestration"`
+	Version       *VersionInfo `json:"version,omitempty"`
+}
+
+// SystemInfo represents gateway system information. The JSON shape mirrors the
+// pinned gateway (openfaas/faas 0.27.13) GatewayInfo: {provider, version, arch}.
 type SystemInfo struct {
-	Provider struct {
-		Name          string `json:"name"`
-		Version       string `json:"version"`
-		Orchestration string `json:"orchestration"`
-	} `json:"provider"`
-	Version struct {
-		Release    string `json:"release"`
-		SHA        string `json:"sha"`
-		CommitDate string `json:"commit_date,omitempty"`
-	} `json:"version"`
-	Arch string `json:"arch"`
+	Provider ProviderInfo `json:"provider"`
+	Version  *VersionInfo `json:"version"`
+	Arch     string       `json:"arch"`
 }
 
 // FunctionMetadata represents stored function metadata
 type FunctionMetadata struct {
-	ID         int64     `json:"id"`
-	Name       string    `json:"name"`
-	Image      string    `json:"image"`
-	EnvProcess string    `json:"envProcess,omitempty"`
-	EnvVars    string    `json:"envVars,omitempty"` // JSON encoded
-	Labels     string    `json:"labels,omitempty"`  // JSON encoded
-	Secrets    string    `json:"secrets,omitempty"` // JSON encoded
-	Network    string    `json:"network"`
-	Replicas   int       `json:"replicas"`
-	Limits     string    `json:"limits,omitempty"`   // JSON encoded
-	Requests   string    `json:"requests,omitempty"` // JSON encoded
-	ReadOnly   bool      `json:"readOnly"`
-	Debug      bool      `json:"debug"`
-	CreatedAt  time.Time `json:"createdAt"`
-	UpdatedAt  time.Time `json:"updatedAt"`
+	ID          int64     `json:"id"`
+	Name        string    `json:"name"`
+	Image       string    `json:"image"`
+	EnvProcess  string    `json:"envProcess,omitempty"`
+	EnvVars     string    `json:"envVars,omitempty"`     // JSON encoded
+	Labels      string    `json:"labels,omitempty"`      // JSON encoded
+	Annotations string    `json:"annotations,omitempty"` // JSON encoded
+	Secrets     string    `json:"secrets,omitempty"`     // JSON encoded
+	Network     string    `json:"network"`
+	Replicas    int       `json:"replicas"`
+	Limits      string    `json:"limits,omitempty"`   // JSON encoded
+	Requests    string    `json:"requests,omitempty"` // JSON encoded
+	ReadOnly    bool      `json:"readOnly"`
+	Debug       bool      `json:"debug"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
 // Container represents a running function container instance

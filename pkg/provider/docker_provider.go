@@ -40,6 +40,14 @@ const (
 	LabelNetworkType = "com.docker-faas.network.type"
 	// LabelNetworkFunction is the label key for function-specific networks
 	LabelNetworkFunction = "com.docker-faas.network.function"
+	// LabelGateway records the owning gateway deployment's stable identity on
+	// every function container. Orphan cleanup is scoped to containers carrying
+	// THIS gateway's identity so an idle reconciler can never reclaim function
+	// containers created by a DIFFERENT docker-faas instance sharing the same
+	// Docker daemon (RT-223). The identity is the FUNCTIONS_NETWORK name, which
+	// is stable across gateway restarts (unlike the gateway container ID) and
+	// distinct per deployment.
+	LabelGateway = "com.docker-faas.gateway"
 )
 
 // DockerProvider manages Docker containers for functions
@@ -51,6 +59,50 @@ type DockerProvider struct {
 	gatewayID        string
 	connectGateway   bool
 	debugBindAddress string
+	// strictOwnership, when true, makes per-function container selection ignore
+	// containers that carry NO gateway-ownership label (in addition to always
+	// ignoring a DIFFERENT gateway's containers). For a Docker daemon SHARED by
+	// multiple docker-faas instances this closes the legacy cross-destruction
+	// window (a pre-ownership-label container of one gateway being reclaimed or
+	// scaled by another). Default false preserves seamless management of a
+	// single gateway's own pre-upgrade containers (RT-234).
+	strictOwnership bool
+}
+
+// SetStrictOwnership enables strict container-ownership scoping (see the field
+// doc). Operators upgrading a shared daemon must recreate legacy containers in
+// lenient mode first, then enable strict mode after every container has an owner
+// label; strict mode intentionally refuses to adopt or delete unlabeled names.
+func (p *DockerProvider) SetStrictOwnership(strict bool) { p.strictOwnership = strict }
+
+// canManageContainer reports whether a container belongs to this gateway. An
+// explicit ownership label must always match. Unlabeled pre-upgrade containers
+// are accepted only in lenient mode for single-gateway upgrade compatibility.
+func (p *DockerProvider) canManageContainer(labels map[string]string) bool {
+	owner, labeled := labels[LabelGateway]
+	if labeled {
+		return owner == p.ownerID()
+	}
+	return !p.strictOwnership
+}
+
+// functionContainerLabels builds a function container's label set. Caller
+// labels are applied FIRST, then the reserved identity labels overwrite them so
+// a deployment can never override its own function/type/replica/network/gateway
+// identity (which would break ownership isolation, e.g. forging LabelGateway to
+// appear owned by another gateway and evade or hijack reclaim). Reserved keys
+// are the authority, not caller input (RT-235).
+func functionContainerLabels(custom map[string]string, service, networkName, ownerID string, replicaIndex int) map[string]string {
+	labels := make(map[string]string, len(custom)+5)
+	for k, v := range custom {
+		labels[k] = v
+	}
+	labels[LabelFunction] = service
+	labels[LabelType] = "function"
+	labels[LabelReplica] = fmt.Sprintf("%d", replicaIndex)
+	labels[LabelNetwork] = networkName
+	labels[LabelGateway] = ownerID
+	return labels
 }
 
 type replicaScalePlan struct {
@@ -287,16 +339,7 @@ func (p *DockerProvider) createContainer(ctx context.Context, deployment *faasTy
 		return fmt.Errorf("failed to connect gateway to network %s: %w", networkName, err)
 	}
 
-	containerLabels := make(map[string]string)
-	containerLabels[LabelFunction] = deployment.Service
-	containerLabels[LabelType] = "function"
-	containerLabels[LabelReplica] = fmt.Sprintf("%d", replicaIndex)
-	containerLabels[LabelNetwork] = networkName
-
-	// Add custom labels
-	for k, v := range deployment.Labels {
-		containerLabels[k] = v
-	}
+	containerLabels := functionContainerLabels(deployment.Labels, deployment.Service, networkName, p.ownerID(), replicaIndex)
 
 	env := []string{}
 	for k, v := range deployment.EnvVars {
@@ -491,39 +534,34 @@ func (p *DockerProvider) ScaleFunction(ctx context.Context, deployment *faasType
 	return nil
 }
 
-// removeContainer removes a specific container by name
-func (p *DockerProvider) removeContainer(ctx context.Context, name string) error {
-	inspect, err := p.client.ContainerInspect(ctx, name)
-	if err != nil {
-		if errdefs.IsNotFound(err) || isContainerNotFoundErr(err) {
-			return nil
-		}
-		return fmt.Errorf("failed to inspect container: %w", err)
-	}
-
-	if inspect.State != nil && inspect.State.Running {
-		timeout := int(10)
-		if err := p.client.ContainerStop(ctx, inspect.ID, container.StopOptions{Timeout: &timeout}); err != nil && !errdefs.IsNotFound(err) && !isContainerNotFoundErr(err) {
-			return fmt.Errorf("failed to stop container: %w", err)
-		}
-	}
-
-	if err := p.client.ContainerRemove(ctx, inspect.ID, container.RemoveOptions{Force: true}); err != nil && !errdefs.IsNotFound(err) && !isContainerNotFoundErr(err) {
-		return fmt.Errorf("failed to remove container: %w", err)
-	}
-
-	return nil
-}
-
-// listFunctionContainers lists all containers for a function
+// listFunctionContainers lists this gateway's containers for a function. It
+// filters by function name + type at the daemon, then applies the shared
+// ownership predicate used by stale-name cleanup. Explicitly foreign containers
+// are always excluded; unlabeled pre-upgrade containers are included only in
+// lenient mode. Container names remain daemon-global, so separate gateways must
+// still use disjoint function names.
 func (p *DockerProvider) listFunctionContainers(ctx context.Context, functionName string) ([]container.Summary, error) {
 	filters := filters.NewArgs()
 	filters.Add("label", fmt.Sprintf("%s=%s", LabelFunction, functionName))
+	// Also require the function TYPE label so a stray container that merely
+	// carries the function-name label is never swept by reclaim (RT-222).
+	filters.Add("label", fmt.Sprintf("%s=function", LabelType))
 
-	return p.client.ContainerList(ctx, container.ListOptions{
+	all, err := p.client.ContainerList(ctx, container.ListOptions{
 		All:     true,
 		Filters: filters,
 	})
+	if err != nil {
+		return nil, err
+	}
+	out := all[:0]
+	for _, c := range all {
+		if !p.canManageContainer(c.Labels) {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out, nil
 }
 
 // GetFunctionContainers retrieves container information for a function
@@ -589,6 +627,14 @@ func (p *DockerProvider) removeStaleContainerByName(ctx context.Context, name st
 			return nil
 		}
 		return fmt.Errorf("failed to inspect existing container %s: %w", name, err)
+	}
+
+	var labels map[string]string
+	if inspect.Config != nil {
+		labels = inspect.Config.Labels
+	}
+	if !p.canManageContainer(labels) {
+		return fmt.Errorf("container %s already exists but is not owned by this gateway", name)
 	}
 
 	state := ""

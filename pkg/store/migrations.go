@@ -61,6 +61,25 @@ var Migrations = []Migration{
 			CREATE INDEX IF NOT EXISTS idx_functions_created_at ON functions(created_at);
 		`,
 	},
+	{
+		Version:     3,
+		Description: "Add annotations column (JSON encoded) for OpenFaaS FunctionStatus.annotations",
+		Up: `
+			ALTER TABLE functions ADD COLUMN annotations TEXT NOT NULL DEFAULT '';
+		`,
+		Down: `
+			-- SQLite doesn't support DROP COLUMN directly
+			-- Create new table without annotations column, copy data, rename
+			CREATE TABLE functions_backup AS SELECT
+				id, name, image, env_process, env_vars, labels, secrets,
+				network, replicas, limits, requests, read_only, debug, created_at, updated_at
+			FROM functions;
+			DROP TABLE functions;
+			ALTER TABLE functions_backup RENAME TO functions;
+			CREATE INDEX IF NOT EXISTS idx_functions_name ON functions(name);
+			CREATE INDEX IF NOT EXISTS idx_functions_created_at ON functions(created_at);
+		`,
+	},
 }
 
 // MigrationManager handles database migrations

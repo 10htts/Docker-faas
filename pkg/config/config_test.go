@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -9,6 +10,10 @@ import (
 )
 
 func TestLoadConfig(t *testing.T) {
+	// Capture a temp dir BEFORE any subtest calls os.Clearenv() (which wipes
+	// TMP/TEMP for the whole process and would break a later t.TempDir()).
+	leaseSecretDir := t.TempDir()
+
 	t.Run("DefaultValues", func(t *testing.T) {
 		// Clear environment variables
 		os.Clearenv()
@@ -76,6 +81,38 @@ func TestLoadConfig(t *testing.T) {
 		cfg := LoadConfig()
 
 		assert.Equal(t, []string{"*"}, cfg.CORSAllowedOrigins)
+		os.Clearenv()
+	})
+
+	// CV-06: the isolated activity-lease secret is absent by default, readable
+	// from the direct env var, and readable from a _FILE mount that takes
+	// precedence (so it can be delivered as a Docker/K8s secret).
+	t.Run("ActivityLeaseSecretDefaultsEmpty", func(t *testing.T) {
+		os.Clearenv()
+		cfg := LoadConfig()
+		assert.Empty(t, cfg.ActivityLeaseSecret)
+	})
+
+	t.Run("ActivityLeaseSecretFromEnv", func(t *testing.T) {
+		os.Clearenv()
+		os.Setenv("FAAS_ACTIVITY_LEASE_SECRET", "  provider-lease-secret  ")
+		cfg := LoadConfig()
+		assert.Equal(t, "provider-lease-secret", cfg.ActivityLeaseSecret)
+		os.Clearenv()
+	})
+
+	t.Run("ActivityLeaseSecretFileTakesPrecedence", func(t *testing.T) {
+		// Use a dir captured BEFORE any subtest called os.Clearenv() (which wipes
+		// TMP/TEMP for the whole process and would break a fresh t.TempDir()).
+		path := filepath.Join(leaseSecretDir, "lease.secret")
+		if err := os.WriteFile(path, []byte("file-delivered-secret\n"), 0o600); err != nil {
+			t.Fatalf("write secret file: %v", err)
+		}
+		os.Clearenv()
+		os.Setenv("FAAS_ACTIVITY_LEASE_SECRET", "env-secret-should-be-overridden")
+		os.Setenv("FAAS_ACTIVITY_LEASE_SECRET_FILE", path)
+		cfg := LoadConfig()
+		assert.Equal(t, "file-delivered-secret", cfg.ActivityLeaseSecret)
 		os.Clearenv()
 	})
 }

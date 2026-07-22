@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +31,15 @@ type Gateway struct {
 	authMgr          AuthManager
 	config           *ConfigView
 	buildOutputLimit int
+	scale            *scaleToZeroDeps
+	// asyncCallbackBlockInternal opts into SSRF filtering of async X-Callback-Url
+	// targets (default false = OpenFaaS-compatible: any callback host allowed).
+	asyncCallbackBlockInternal bool
+}
+
+// SetAsyncCallbackPolicy enables/disables SSRF filtering of async callback URLs.
+func (g *Gateway) SetAsyncCallbackPolicy(blockInternal bool) {
+	g.asyncCallbackBlockInternal = blockInternal
 }
 
 // NewGateway creates a new gateway instance
@@ -71,22 +79,114 @@ func (g *Gateway) SetBuildOutputLimit(limit int) {
 	}
 }
 
-// HandleSystemInfo handles GET /system/info
+// Provider identity constants surfaced by /system/info and X-Served-By.
+const (
+	providerName          = "docker-faas"
+	providerOrchestration = "docker"
+	providerRelease       = "2.2.0"
+	providerSHA           = "dev"
+)
+
+// defaultMaxReplicas mirrors the config default applied when no ConfigView is
+// wired into the gateway.
+const defaultMaxReplicas = 10
+
+// HandleSystemInfo handles GET /system/info.
+//
+// The JSON shape mirrors the pinned gateway (openfaas/faas 0.27.13)
+// GatewayInfo/faas-provider v0.25.12 ProviderInfo: the provider name is under
+// key "provider" (plus legacy additive "name"), version objects carry
+// sha/release.
 func (g *Gateway) HandleSystemInfo(w http.ResponseWriter, r *http.Request) {
-	info := types.SystemInfo{
-		Arch: "x86_64",
+	version := &types.VersionInfo{
+		Release: providerRelease,
+		SHA:     providerSHA,
 	}
-	info.Provider.Name = "docker-faas"
-	info.Provider.Version = "2.2.0"
-	info.Provider.Orchestration = "docker"
-	info.Version.Release = "2.2.0"
-	info.Version.SHA = "dev"
+	info := types.SystemInfo{
+		Provider: types.ProviderInfo{
+			Name:          providerName,
+			LegacyName:    providerName,
+			Orchestration: providerOrchestration,
+			Version:       version,
+		},
+		Version: version,
+		Arch:    "x86_64",
+	}
 
 	g.writeJSON(w, http.StatusOK, info)
 }
 
+// HandleListNamespaces handles GET /system/namespaces. The response shape is
+// the plain JSON string list served by the pinned providers (faas-cli 0.18.0
+// proxy/namespaces.go decodes []string).
+func (g *Gateway) HandleListNamespaces(w http.ResponseWriter, r *http.Request) {
+	g.writeJSON(w, http.StatusOK, []string{DefaultFunctionNamespace})
+}
+
+// runningReplicas counts containers that report a running state.
+func runningReplicas(containers []*types.Container) int {
+	running := 0
+	for _, c := range containers {
+		if strings.Contains(c.Status, "running") || strings.Contains(c.Status, "Up") {
+			running++
+		}
+	}
+	return running
+}
+
+// functionStatusFromMetadata builds the pinned faas-provider FunctionStatus
+// shape from stored metadata plus the observed available replica count.
+func (g *Gateway) functionStatusFromMetadata(fn *types.FunctionMetadata, availableReplicas int) types.FunctionStatus {
+	var limits *types.FunctionLimits
+	if fn.Limits != "" {
+		var parsed types.FunctionLimits
+		if err := json.Unmarshal([]byte(fn.Limits), &parsed); err == nil {
+			limits = &parsed
+		} else {
+			g.logger.Warnf("Failed to parse limits for %s: %v", fn.Name, err)
+		}
+	}
+
+	var requests *types.FunctionResources
+	if fn.Requests != "" {
+		var parsed types.FunctionResources
+		if err := json.Unmarshal([]byte(fn.Requests), &parsed); err == nil {
+			requests = &parsed
+		} else {
+			g.logger.Warnf("Failed to parse requests for %s: %v", fn.Name, err)
+		}
+	}
+
+	return types.FunctionStatus{
+		Name:                   fn.Name,
+		Image:                  fn.Image,
+		Namespace:              DefaultFunctionNamespace,
+		Replicas:               fn.Replicas,
+		AvailableReplicas:      availableReplicas,
+		EnvProcess:             fn.EnvProcess,
+		EnvVars:                store.DecodeMap(fn.EnvVars),
+		Labels:                 store.DecodeMap(fn.Labels),
+		Annotations:            store.DecodeMap(fn.Annotations),
+		Secrets:                store.DecodeSlice(fn.Secrets),
+		Network:                fn.Network,
+		Limits:                 limits,
+		Requests:               requests,
+		ReadOnlyRootFilesystem: fn.ReadOnly,
+		Debug:                  fn.Debug,
+		CreatedAt:              fn.CreatedAt,
+		UpdatedAt:              fn.UpdatedAt,
+	}
+}
+
 // HandleListFunctions handles GET /system/functions
 func (g *Gateway) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
+	// Only the default namespace exists; unknown namespaces answer 400
+	// "namespace not valid" like the pinned reference provider (faasd).
+	if err := validateNamespace(r.URL.Query().Get("namespace")); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	functions, err := g.store.ListFunctions()
 	if err != nil {
 		g.logger.Errorf("Failed to list functions: %v", err)
@@ -96,62 +196,58 @@ func (g *Gateway) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
 
 	statuses := make([]types.FunctionStatus, 0, len(functions))
 	for _, fn := range functions {
-		containers, err := g.provider.GetFunctionContainers(r.Context(), fn.Name)
-		if err != nil {
-			g.logger.Warnf("Failed to get containers for function %s: %v", fn.Name, err)
-			continue
+		// A transient container-query error must NOT drop the function from the
+		// listing (that would make faas-cli list silently show fewer functions
+		// than exist, with no error signalled). Report it with 0 available
+		// replicas instead — the function is declared and stored regardless of
+		// current container state.
+		available := 0
+		if containers, err := g.provider.GetFunctionContainers(r.Context(), fn.Name); err != nil {
+			g.logger.Warnf("Failed to get containers for function %s (reporting availableReplicas=0): %v", fn.Name, err)
+		} else {
+			available = runningReplicas(containers)
 		}
-
-		availableReplicas := 0
-		for _, c := range containers {
-			if strings.Contains(c.Status, "running") || strings.Contains(c.Status, "Up") {
-				availableReplicas++
-			}
-		}
-
-		var limits *types.FunctionLimits
-		if fn.Limits != "" {
-			var parsed types.FunctionLimits
-			if err := json.Unmarshal([]byte(fn.Limits), &parsed); err == nil {
-				limits = &parsed
-			} else {
-				g.logger.Warnf("Failed to parse limits for %s: %v", fn.Name, err)
-			}
-		}
-
-		var requests *types.FunctionResources
-		if fn.Requests != "" {
-			var parsed types.FunctionResources
-			if err := json.Unmarshal([]byte(fn.Requests), &parsed); err == nil {
-				requests = &parsed
-			} else {
-				g.logger.Warnf("Failed to parse requests for %s: %v", fn.Name, err)
-			}
-		}
-
-		status := types.FunctionStatus{
-			Name:                   fn.Name,
-			Image:                  fn.Image,
-			Replicas:               fn.Replicas,
-			AvailableReplicas:      availableReplicas,
-			EnvProcess:             fn.EnvProcess,
-			EnvVars:                store.DecodeMap(fn.EnvVars),
-			Labels:                 store.DecodeMap(fn.Labels),
-			Annotations:            make(map[string]string),
-			Secrets:                store.DecodeSlice(fn.Secrets),
-			Network:                fn.Network,
-			Limits:                 limits,
-			Requests:               requests,
-			ReadOnlyRootFilesystem: fn.ReadOnly,
-			Debug:                  fn.Debug,
-			CreatedAt:              fn.CreatedAt,
-			UpdatedAt:              fn.UpdatedAt,
-		}
-
-		statuses = append(statuses, status)
+		statuses = append(statuses, g.functionStatusFromMetadata(fn, available))
 	}
 
 	g.writeJSON(w, http.StatusOK, statuses)
+}
+
+// HandleGetFunction handles GET /system/function/{name}.
+//
+// Response shape and status codes follow the pinned OpenAPI spec
+// (openfaas/faas 0.27.13 api-docs/spec.openapi.yml: 200/404/500) and the
+// pinned faas-provider v0.25.12 FunctionStatus JSON keys, which faas-cli
+// 0.18.0 `describe` decodes.
+func (g *Gateway) HandleGetFunction(w http.ResponseWriter, r *http.Request) {
+	functionName := normalizeFunctionName(mux.Vars(r)["name"])
+	if functionName == "" {
+		http.Error(w, "Function name is required", http.StatusBadRequest)
+		return
+	}
+	if err := validateFunctionName(functionName); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := validateNamespace(r.URL.Query().Get("namespace")); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	fn, err := g.store.GetFunction(functionName)
+	if err != nil {
+		http.Error(w, "Function not found", http.StatusNotFound)
+		return
+	}
+
+	containers, err := g.provider.GetFunctionContainers(r.Context(), functionName)
+	if err != nil {
+		g.logger.Errorf("Failed to get containers for function %s: %v", functionName, err)
+		http.Error(w, "Failed to get function containers", http.StatusInternalServerError)
+		return
+	}
+
+	g.writeJSON(w, http.StatusOK, g.functionStatusFromMetadata(fn, runningReplicas(containers)))
 }
 
 // HandleFunctionContainers handles GET /system/function/<name>/containers
@@ -194,6 +290,10 @@ func (g *Gateway) HandleDeployFunction(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if err := validateNamespace(deployment.Namespace); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	g.logger.Infof("Deploying function: %s (image: %s)", deployment.Service, deployment.Image)
 
@@ -209,8 +309,9 @@ func (g *Gateway) HandleDeployFunction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Default to 1 replica
-	replicas := 1
+	// Initial replicas honor the scale.min label (custom com.docker-faas label
+	// wins over com.openfaas.scale.min), clamped to [1, config MaxReplicas].
+	replicas := g.initialReplicas(deployment.Service, deployment.Labels)
 
 	// Deploy function containers
 	if err := g.provider.DeployFunction(r.Context(), &deployment, replicas); err != nil {
@@ -230,6 +331,11 @@ func (g *Gateway) HandleDeployFunction(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to encode labels: %v", err), http.StatusBadRequest)
 		return
 	}
+	annotations, err := store.EncodeMap(deployment.Annotations)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode annotations: %v", err), http.StatusBadRequest)
+		return
+	}
 	secretsJSON, err := store.EncodeSlice(deployment.Secrets)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to encode secrets: %v", err), http.StatusBadRequest)
@@ -237,16 +343,17 @@ func (g *Gateway) HandleDeployFunction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	metadata := &types.FunctionMetadata{
-		Name:       deployment.Service,
-		Image:      deployment.Image,
-		EnvProcess: deployment.EnvProcess,
-		EnvVars:    envVars,
-		Labels:     labels,
-		Secrets:    secretsJSON,
-		Network:    deployment.Network,
-		Replicas:   replicas,
-		ReadOnly:   deployment.ReadOnlyRootFilesystem,
-		Debug:      deployment.Debug,
+		Name:        deployment.Service,
+		Image:       deployment.Image,
+		EnvProcess:  deployment.EnvProcess,
+		EnvVars:     envVars,
+		Labels:      labels,
+		Annotations: annotations,
+		Secrets:     secretsJSON,
+		Network:     deployment.Network,
+		Replicas:    replicas,
+		ReadOnly:    deployment.ReadOnlyRootFilesystem,
+		Debug:       deployment.Debug,
 	}
 
 	if deployment.Limits != nil {
@@ -300,6 +407,10 @@ func (g *Gateway) HandleUpdateFunction(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if err := validateNamespace(deployment.Namespace); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	g.logger.Infof("Updating function: %s (image: %s)", deployment.Service, deployment.Image)
 
@@ -339,6 +450,11 @@ func (g *Gateway) HandleUpdateFunction(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to encode labels: %v", err), http.StatusBadRequest)
 		return
 	}
+	annotations, err := store.EncodeMap(deployment.Annotations)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode annotations: %v", err), http.StatusBadRequest)
+		return
+	}
 	secretsJSON, err := store.EncodeSlice(deployment.Secrets)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to encode secrets: %v", err), http.StatusBadRequest)
@@ -347,6 +463,7 @@ func (g *Gateway) HandleUpdateFunction(w http.ResponseWriter, r *http.Request) {
 
 	existing.EnvVars = envVars
 	existing.Labels = labels
+	existing.Annotations = annotations
 	existing.Secrets = secretsJSON
 	existing.Network = deployment.Network
 	existing.ReadOnly = deployment.ReadOnlyRootFilesystem
@@ -383,16 +500,26 @@ func (g *Gateway) HandleUpdateFunction(w http.ResponseWriter, r *http.Request) {
 // HandleDeleteFunction handles DELETE /system/functions
 func (g *Gateway) HandleDeleteFunction(w http.ResponseWriter, r *http.Request) {
 	functionName := r.URL.Query().Get("functionName")
-	if functionName == "" && r.Body != nil {
+	namespace := r.URL.Query().Get("namespace")
+	if r.Body != nil {
+		// Pinned request body shape: faas-provider v0.25.12
+		// DeleteFunctionRequest {functionName, namespace}. The legacy "service"
+		// key is accepted additively.
 		var payload struct {
 			FunctionName string `json:"functionName"`
 			Service      string `json:"service"`
+			Namespace    string `json:"namespace"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&payload); err == nil {
-			if payload.FunctionName != "" {
-				functionName = payload.FunctionName
-			} else if payload.Service != "" {
-				functionName = payload.Service
+			if functionName == "" {
+				if payload.FunctionName != "" {
+					functionName = payload.FunctionName
+				} else if payload.Service != "" {
+					functionName = payload.Service
+				}
+			}
+			if payload.Namespace != "" {
+				namespace = payload.Namespace
 			}
 		}
 	}
@@ -403,6 +530,10 @@ func (g *Gateway) HandleDeleteFunction(w http.ResponseWriter, r *http.Request) {
 	}
 	if functionName == "" {
 		http.Error(w, "functionName parameter is required", http.StatusBadRequest)
+		return
+	}
+	if err := validateNamespace(namespace); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -430,6 +561,18 @@ func (g *Gateway) HandleDeleteFunction(w http.ResponseWriter, r *http.Request) {
 
 	if err := g.provider.CleanupFunctionNetwork(r.Context(), metadata.Name, metadata.Network); err != nil {
 		g.logger.Warnf("Failed to cleanup function network: %v", err)
+	}
+
+	// Drop the function's scale-to-zero coordination state so it neither leaks
+	// nor survives a delete→redeploy of the same name (a stale ready flag or
+	// generation must not carry over to the new function's lifecycle, RT-216).
+	if g.scale != nil {
+		if g.scale.gates != nil {
+			g.scale.gates.Forget(functionName)
+		}
+		if g.scale.leases != nil {
+			g.scale.leases.Forget(functionName)
+		}
 	}
 
 	// Update metrics
@@ -486,6 +629,10 @@ func (g *Gateway) HandleScaleFunction(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "serviceName is required", http.StatusBadRequest)
 		return
 	}
+	if err := validateNamespace(scaleReq.Namespace); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	if scaleReq.Replicas < 0 {
 		http.Error(w, "replicas must be >= 0", http.StatusBadRequest)
@@ -501,6 +648,19 @@ func (g *Gateway) HandleScaleFunction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	functionLabels := store.DecodeMap(metadata.Labels)
+
+	// Clamp the requested replicas to the function's max-replica label
+	// (com.openfaas.scale.max; the custom com.docker-faas.scale.max-replicas
+	// label wins when both are present). Upstream clamp-vs-reject behavior is
+	// ambiguous at the pin, so we clamp and record the decision in
+	// redteam/CONFORMANCE_MATRIX.md. Explicit scale to 0 (pause) stays allowed.
+	if _, maxReplicas := scaleBoundsFromLabels(functionLabels); maxReplicas > 0 && scaleReq.Replicas > maxReplicas {
+		g.logger.Warnf("Clamping scale request for %s from %d to label max %d",
+			scaleReq.ServiceName, scaleReq.Replicas, maxReplicas)
+		scaleReq.Replicas = maxReplicas
+	}
+
 	// Build deployment spec
 	deployment := &types.FunctionDeployment{
 		Service:                metadata.Name,
@@ -508,7 +668,8 @@ func (g *Gateway) HandleScaleFunction(w http.ResponseWriter, r *http.Request) {
 		Network:                metadata.Network,
 		EnvProcess:             metadata.EnvProcess,
 		EnvVars:                store.DecodeMap(metadata.EnvVars),
-		Labels:                 store.DecodeMap(metadata.Labels),
+		Labels:                 functionLabels,
+		Annotations:            store.DecodeMap(metadata.Annotations),
 		Secrets:                store.DecodeSlice(metadata.Secrets),
 		ReadOnlyRootFilesystem: metadata.ReadOnly,
 		Debug:                  metadata.Debug,
@@ -535,35 +696,52 @@ func (g *Gateway) HandleScaleFunction(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Function scaled successfully"))
 }
 
-// HandleGetLogs handles GET /system/logs?name=<function>
-func (g *Gateway) HandleGetLogs(w http.ResponseWriter, r *http.Request) {
-	functionName := normalizeFunctionName(r.URL.Query().Get("name"))
-	if functionName == "" {
-		http.Error(w, "name parameter is required", http.StatusBadRequest)
-		return
-	}
-	if err := validateFunctionName(functionName); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
+// HandleGetLogs (GET /system/logs) lives in logs_handlers.go and serves the
+// pinned faas-provider NDJSON log contract.
 
-	tail := 100
-	if tailStr := r.URL.Query().Get("tail"); tailStr != "" {
-		if t, err := strconv.Atoi(tailStr); err == nil {
-			tail = t
-		}
+// initialReplicas resolves the initial replica count for a new deployment:
+// clamp(scale.min label if set else 1, 1, config MaxReplicas).
+func (g *Gateway) initialReplicas(functionName string, labels map[string]string) int {
+	replicas := 1
+	if minReplicas, _ := scaleBoundsFromLabels(labels); minReplicas > 1 {
+		replicas = minReplicas
 	}
-
-	logs, err := g.provider.GetContainerLogs(r.Context(), functionName, tail)
-	if err != nil {
-		g.logger.Errorf("Failed to get logs: %v", err)
-		http.Error(w, fmt.Sprintf("Failed to get logs: %v", err), http.StatusInternalServerError)
-		return
+	if maxReplicas := g.configMaxReplicas(); replicas > maxReplicas {
+		g.logger.Warnf("Clamping initial replicas for %s from %d to config max %d",
+			functionName, replicas, maxReplicas)
+		replicas = maxReplicas
 	}
+	return replicas
+}
 
-	w.Header().Set("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(logs))
+// configMaxReplicas returns the configured max replicas, defaulting to
+// defaultMaxReplicas when no ConfigView is wired.
+func (g *Gateway) configMaxReplicas() int {
+	if g.config != nil && g.config.MaxReplicas > 0 {
+		return g.config.MaxReplicas
+	}
+	return defaultMaxReplicas
+}
+
+// stampCallHeaders mirrors the pinned gateway's call-id middleware
+// (openfaas/faas 0.27.13 gateway/handlers/callid_middleware.go): a caller
+// supplied X-Call-Id is preserved, otherwise one is generated; X-Start-Time is
+// the UTC start time in UnixNano; both are stamped on the upstream request and
+// the response, plus an X-Served-By marker.
+func (g *Gateway) stampCallHeaders(w http.ResponseWriter, r *http.Request) (callID string, start time.Time) {
+	start = time.Now()
+	callID = r.Header.Get("X-Call-Id")
+	if callID == "" {
+		callID = generateCallID()
+		r.Header.Set("X-Call-Id", callID)
+	}
+	startNanos := fmt.Sprintf("%d", start.UTC().UnixNano())
+	r.Header.Set("X-Start-Time", startNanos)
+
+	w.Header().Set("X-Call-Id", callID)
+	w.Header().Set("X-Start-Time", startNanos)
+	w.Header().Set("X-Served-By", providerName+"/"+providerRelease)
+	return callID, start
 }
 
 // HandleInvokeFunction handles POST /function/<name>
@@ -580,7 +758,7 @@ func (g *Gateway) HandleInvokeFunction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	startTime := time.Now()
+	_, startTime := g.stampCallHeaders(w, r)
 
 	// Get function metadata
 	fn, err := g.store.GetFunction(functionName)
@@ -588,6 +766,14 @@ func (g *Gateway) HandleInvokeFunction(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Function not found", http.StatusNotFound)
 		return
 	}
+
+	// Register this invocation as in-flight BEFORE checking replica
+	// availability so the idle reaper cannot reclaim the function between the
+	// check and the route (SZ-01). The token also records whether a reclaim was
+	// already in progress, forcing a cold start rather than routing to a
+	// container being torn down.
+	release, reclaimInProgress := g.trackInvocation(functionName)
+	defer release()
 
 	// CRITICAL: Check if function needs to scale up from zero
 	containers, err := g.provider.GetFunctionContainers(r.Context(), functionName)
@@ -604,20 +790,14 @@ func (g *Gateway) HandleInvokeFunction(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if availableReplicas == 0 {
+	if availableReplicas == 0 || reclaimInProgress {
 		g.logger.Infof("Scaling function %s from zero...", functionName)
 
-		// Start the container
-		if err := g.scaleFromZero(r.Context(), fn); err != nil {
+		// Single-leader cold start: concurrent requests create ONE container
+		// and the rest wait on readiness (SZ-02).
+		if err := g.ensureReadyFromZero(r.Context(), fn); err != nil {
 			g.logger.Errorf("Failed to scale function %s from zero: %v", functionName, err)
 			http.Error(w, fmt.Sprintf("Failed to scale function: %v", err), http.StatusInternalServerError)
-			return
-		}
-
-		// Wait for container to be ready (with timeout)
-		if err := g.waitForFunctionReady(r.Context(), functionName, 30*time.Second); err != nil {
-			g.logger.Errorf("Function %s failed to start: %v", functionName, err)
-			http.Error(w, fmt.Sprintf("Function failed to start: %v", err), http.StatusGatewayTimeout)
 			return
 		}
 
@@ -747,6 +927,7 @@ func (g *Gateway) scaleFromZero(ctx context.Context, fn *types.FunctionMetadata)
 		EnvProcess:             fn.EnvProcess,
 		EnvVars:                store.DecodeMap(fn.EnvVars),
 		Labels:                 store.DecodeMap(fn.Labels),
+		Annotations:            store.DecodeMap(fn.Annotations),
 		Secrets:                store.DecodeSlice(fn.Secrets),
 		ReadOnlyRootFilesystem: fn.ReadOnly,
 		Debug:                  fn.Debug,
@@ -787,6 +968,12 @@ func (g *Gateway) scaleFromZero(ctx context.Context, fn *types.FunctionMetadata)
 
 // waitForFunctionReady waits for a function to have at least one running container
 func (g *Gateway) waitForFunctionReady(ctx context.Context, functionName string, timeout time.Duration) error {
+	// Immediate first check: a container that is already running must not pay
+	// the 500ms tick floor on every cold start (RT-219).
+	if g.isContainerHealthy(ctx, functionName) {
+		return nil
+	}
+
 	deadline := time.Now().Add(timeout)
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
